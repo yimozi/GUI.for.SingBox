@@ -348,7 +348,7 @@ export default {
       settingsTips:
         'Takes effect temporarily. For persistent changes, please modify the `profile` settings.',
       updateGEO: 'Update GEO',
-      needPort: 'Please set the proxy port first',
+      needPort: 'Please add a Mixed/Http/Socks inbound first',
       needTun: 'Please add a TUN inbound first',
     },
     controller: {
@@ -571,6 +571,9 @@ export default {
     'update::subscription': 'update::subscription',
     'update::ruleset': 'update::ruleset',
     'update::plugin': 'update::plugin',
+    'update::all::subscription': 'update::all::subscription',
+    'update::all::ruleset': 'update::all::ruleset',
+    'update::all::plugin': 'update::all::plugin',
     'run::plugin': 'run::plugin',
     'run::script': 'run::script',
   },

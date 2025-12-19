@@ -347,7 +347,7 @@ export default {
       settings: '内核设置',
       settingsTips: '暂时生效，持久化请修改配置文件',
       updateGEO: '更新 GEO',
-      needPort: '请先设置代理端口',
+      needPort: '请先添加一个Mixed/Http/Socks入站',
       needTun: '请先添加一个TUN入站',
     },
     controller: {
@@ -570,6 +570,9 @@ export default {
     'update::subscription': '更新订阅',
     'update::ruleset': '更新规则集',
     'update::plugin': '更新插件',
+    'update::all::subscription': '更新所有订阅',
+    'update::all::ruleset': '更新所有规则集',
+    'update::all::plugin': '更新所有插件',
     'run::plugin': '运行插件',
     'run::script': '运行脚本',
   },

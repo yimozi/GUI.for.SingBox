@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 
 import { GetEnv } from '@/bridge'
 import { useAppSettingsStore, useKernelApiStore } from '@/stores'
-import { updateTrayMenus, SetSystemProxy, GetSystemProxy } from '@/utils'
+import { updateTrayAndMenus, SetSystemProxy, GetSystemProxy } from '@/utils'
 
 export const useEnvStore = defineStore('env', () => {
   const appSettings = useAppSettingsStore()
@@ -16,6 +16,7 @@ export const useEnvStore = defineStore('env', () => {
     appPath: '',
     os: '',
     arch: '',
+    isPrivileged: false,
   })
 
   const systemProxy = ref(false)
@@ -81,7 +82,7 @@ export const useEnvStore = defineStore('env', () => {
     else await clearSystemProxy()
   }
 
-  watch(systemProxy, updateTrayMenus)
+  watch(systemProxy, updateTrayAndMenus)
 
   return {
     env,

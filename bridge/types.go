@@ -14,14 +14,15 @@ type App struct {
 }
 
 type EnvResult struct {
-	IsStartup   bool   `json:"-"`
-	FromTaskSch bool   `json:"-"`
-	WebviewPath string `json:"-"`
-	AppName     string `json:"appName"`
-	AppVersion  string `json:"appVersion"`
-	BasePath    string `json:"basePath"`
-	OS          string `json:"os"`
-	ARCH        string `json:"arch"`
+	IsStartup    bool   `json:"-"`
+	FromTaskSch  bool   `json:"-"`
+	WebviewPath  string `json:"-"`
+	AppName      string `json:"appName"`
+	AppVersion   string `json:"appVersion"`
+	BasePath     string `json:"basePath"`
+	OS           string `json:"os"`
+	ARCH         string `json:"arch"`
+	IsPrivileged bool   `json:"isPrivileged"`
 }
 
 type RequestOptions struct {
@@ -34,13 +35,20 @@ type RequestOptions struct {
 }
 
 type ExecOptions struct {
+	PidFile           string
 	StopOutputKeyword string
 	Convert           bool
 	Env               map[string]string
 }
 
+type Range struct {
+	Start *int64
+	End   *int64
+}
+
 type IOOptions struct {
-	Mode string // Binary / Text
+	Mode  string // Binary / Text
+	Range string // "start-end" / "start-" / "-end"
 }
 
 type FlagResult struct {
@@ -53,8 +61,10 @@ type ServerOptions struct {
 	Key           string
 	StaticPath    string
 	StaticRoute   string
+	StaticHeaders map[string]string
 	UploadPath    string
 	UploadRoute   string
+	UploadHeaders map[string]string
 	MaxUploadSize int64
 }
 
@@ -81,9 +91,9 @@ type AppConfig struct {
 }
 
 type TrayContent struct {
-	Icon    string `json:"icon"`
-	Title   string `json:"title"`
-	Tooltip string `json:"tooltip"`
+	Icon    string `json:"icon,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Tooltip string `json:"tooltip,omitempty"`
 }
 
 type WriteTracker struct {

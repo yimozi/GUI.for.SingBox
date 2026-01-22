@@ -14,6 +14,9 @@ interface Props {
 withDefaults(defineProps<Props>(), {
   type: 'normal',
   size: 'default',
+  iconSize: undefined,
+  iconColor: undefined,
+  icon: undefined,
   loading: false,
   disabled: false,
 })
@@ -36,7 +39,7 @@ withDefaults(defineProps<Props>(), {
         v-if="disabled"
         :color="`var(--btn-${type}-color)`"
         icon="forbidden"
-        class="pointer-events-none shrink-0"
+        class="pointer-events-none shrink-0 mr-4"
       />
       <Icon
         v-if="icon"

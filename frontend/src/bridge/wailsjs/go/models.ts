@@ -6,6 +6,7 @@ export namespace bridge {
 	    basePath: string;
 	    os: string;
 	    arch: string;
+	    isPrivileged: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EnvResult(source);
@@ -18,9 +19,11 @@ export namespace bridge {
 	        this.basePath = source["basePath"];
 	        this.os = source["os"];
 	        this.arch = source["arch"];
+	        this.isPrivileged = source["isPrivileged"];
 	    }
 	}
 	export class ExecOptions {
+	    PidFile: string;
 	    StopOutputKeyword: string;
 	    Convert: boolean;
 	    Env: Record<string, string>;
@@ -31,6 +34,7 @@ export namespace bridge {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.PidFile = source["PidFile"];
 	        this.StopOutputKeyword = source["StopOutputKeyword"];
 	        this.Convert = source["Convert"];
 	        this.Env = source["Env"];
@@ -70,6 +74,7 @@ export namespace bridge {
 	}
 	export class IOOptions {
 	    Mode: string;
+	    Range: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new IOOptions(source);
@@ -78,6 +83,7 @@ export namespace bridge {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Mode = source["Mode"];
+	        this.Range = source["Range"];
 	    }
 	}
 	export class MenuItem {
@@ -163,8 +169,10 @@ export namespace bridge {
 	    Key: string;
 	    StaticPath: string;
 	    StaticRoute: string;
+	    StaticHeaders: Record<string, string>;
 	    UploadPath: string;
 	    UploadRoute: string;
+	    UploadHeaders: Record<string, string>;
 	    MaxUploadSize: number;
 	
 	    static createFrom(source: any = {}) {
@@ -177,15 +185,17 @@ export namespace bridge {
 	        this.Key = source["Key"];
 	        this.StaticPath = source["StaticPath"];
 	        this.StaticRoute = source["StaticRoute"];
+	        this.StaticHeaders = source["StaticHeaders"];
 	        this.UploadPath = source["UploadPath"];
 	        this.UploadRoute = source["UploadRoute"];
+	        this.UploadHeaders = source["UploadHeaders"];
 	        this.MaxUploadSize = source["MaxUploadSize"];
 	    }
 	}
 	export class TrayContent {
-	    icon: string;
-	    title: string;
-	    tooltip: string;
+	    icon?: string;
+	    title?: string;
+	    tooltip?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TrayContent(source);

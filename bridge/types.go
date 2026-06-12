@@ -37,6 +37,7 @@ type RequestOptions struct {
 
 type ExecOptions struct {
 	PidFile           string
+	LogFile           string
 	StopOutputKeyword string
 	WorkingDirectory  string
 	Convert           bool
@@ -70,9 +71,9 @@ type ServerOptions struct {
 	MaxUploadSize int64
 }
 
-type NotifyOptions struct {
-	AppName string
-	Beep    bool
+type NetOptions struct {
+	Mode    string // Binary / Text
+	Timeout int
 }
 
 type HTTPResult struct {
@@ -83,13 +84,14 @@ type HTTPResult struct {
 }
 
 type AppConfig struct {
-	WindowStartState int  `yaml:"windowStartState"`
-	WebviewGpuPolicy int  `yaml:"webviewGpuPolicy"`
-	Width            int  `yaml:"width"`
-	Height           int  `yaml:"height"`
-	MultipleInstance bool `yaml:"multipleInstance"`
-	RollingRelease   bool `yaml:"rollingRelease" default:"true"`
-	StartHidden      bool
+	WindowStartState  int  `yaml:"windowStartState"`
+	WebviewGpuPolicy  int  `yaml:"webviewGpuPolicy"`
+	ContentProtection bool `yaml:"contentProtection"`
+	Width             int  `yaml:"width"`
+	Height            int  `yaml:"height"`
+	MultipleInstance  bool `yaml:"multipleInstance"`
+	RollingRelease    bool `yaml:"rollingRelease" default:"true"`
+	StartHidden       bool
 }
 
 type TrayContent struct {
@@ -108,11 +110,12 @@ type WriteTracker struct {
 }
 
 type MenuItem struct {
-	Type     string     `json:"type"` // Menu Type: item / separator
-	Text     string     `json:"text"`
-	Tooltip  string     `json:"tooltip"`
-	Event    string     `json:"event"`
-	Children []MenuItem `json:"children"`
-	Hidden   bool       `json:"hidden"`
-	Checked  bool       `json:"checked"`
+	Type      string     `json:"type"` // Menu Type: item / separator
+	Text      string     `json:"text"`
+	Tooltip   string     `json:"tooltip"`
+	Event     string     `json:"event"`
+	Children  []MenuItem `json:"children"`
+	Hidden    bool       `json:"hidden"`
+	Checked   bool       `json:"checked"`
+	Checkable bool       `json:"checkable"`
 }

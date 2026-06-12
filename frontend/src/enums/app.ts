@@ -1,3 +1,9 @@
+export enum OS {
+  Windows = 'windows',
+  Linux = 'linux',
+  Darwin = 'darwin',
+}
+
 export enum WindowStartState {
   Normal = 0,
   Minimised = 2,
@@ -42,6 +48,14 @@ export enum Branch {
   Alpha = 'alpha',
 }
 
+export enum RequestProxyMode {
+  Global = 'global',
+  None = 'none',
+  System = 'system',
+  Kernel = 'kernel',
+  Custom = 'custom',
+}
+
 export enum ScheduledTasksType {
   UpdateSubscription = 'update::subscription',
   UpdateRuleset = 'update::ruleset',
@@ -54,6 +68,8 @@ export enum ScheduledTasksType {
 }
 
 export enum PluginTrigger {
+  OnEnabled = 'on::enabled',
+  OnDisabled = 'on::disabled',
   OnManual = 'on::manual',
   OnSubscribe = 'on::subscribe',
   OnGenerate = 'on::generate',
@@ -69,6 +85,9 @@ export enum PluginTrigger {
 }
 
 export enum PluginTriggerEvent {
+  OnEnabled = 'onEnabled',
+  OnDisabled = 'onDisabled',
+  OnDispose = 'onDispose',
   OnInstall = 'onInstall',
   OnUninstall = 'onUninstall',
   OnManual = 'onRun',

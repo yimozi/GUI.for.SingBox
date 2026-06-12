@@ -1,29 +1,8 @@
 export namespace bridge {
 	
-	export class EnvResult {
-	    appName: string;
-	    appVersion: string;
-	    basePath: string;
-	    os: string;
-	    arch: string;
-	    isPrivileged: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new EnvResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.appName = source["appName"];
-	        this.appVersion = source["appVersion"];
-	        this.basePath = source["basePath"];
-	        this.os = source["os"];
-	        this.arch = source["arch"];
-	        this.isPrivileged = source["isPrivileged"];
-	    }
-	}
 	export class ExecOptions {
 	    PidFile: string;
+	    LogFile: string;
 	    StopOutputKeyword: string;
 	    WorkingDirectory: string;
 	    Convert: boolean;
@@ -36,6 +15,7 @@ export namespace bridge {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.PidFile = source["PidFile"];
+	        this.LogFile = source["LogFile"];
 	        this.StopOutputKeyword = source["StopOutputKeyword"];
 	        this.WorkingDirectory = source["WorkingDirectory"];
 	        this.Convert = source["Convert"];
@@ -96,6 +76,7 @@ export namespace bridge {
 	    children: MenuItem[];
 	    hidden: boolean;
 	    checked: boolean;
+	    checkable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new MenuItem(source);
@@ -110,6 +91,7 @@ export namespace bridge {
 	        this.children = this.convertValues(source["children"], MenuItem);
 	        this.hidden = source["hidden"];
 	        this.checked = source["checked"];
+	        this.checkable = source["checkable"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -130,18 +112,18 @@ export namespace bridge {
 		    return a;
 		}
 	}
-	export class NotifyOptions {
-	    AppName: string;
-	    Beep: boolean;
+	export class NetOptions {
+	    Mode: string;
+	    Timeout: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new NotifyOptions(source);
+	        return new NetOptions(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.AppName = source["AppName"];
-	        this.Beep = source["Beep"];
+	        this.Mode = source["Mode"];
+	        this.Timeout = source["Timeout"];
 	    }
 	}
 	export class RequestOptions {

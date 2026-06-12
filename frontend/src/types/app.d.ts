@@ -9,10 +9,22 @@ import type {
   WebviewGpuPolicy,
   Branch,
   ControllerCloseMode,
+  RequestProxyMode,
   PluginTrigger,
   ScheduledTasksType,
   RequestMethod,
+  OS,
 } from '@/enums/app'
+
+export interface AppEnv {
+  appName: string
+  appVersion: string
+  basePath: string
+  appPath: string
+  os: OS
+  arch: string
+  isPrivileged: boolean
+}
 
 export interface TrayContent {
   icon?: string
@@ -35,6 +47,7 @@ export interface MenuItem {
   children?: MenuItem[]
   hidden?: boolean
   checked?: boolean
+  checkable?: boolean
 }
 
 export interface AppSettings {
@@ -51,11 +64,14 @@ export interface AppSettings {
   scheduledtasksView: View
   windowStartState: WindowStartState
   webviewGpuPolicy: WebviewGpuPolicy
+  contentProtection: boolean
   width: number
   height: number
   exitOnClose: boolean
   closeKernelOnExit: boolean
   autoSetSystemProxy: boolean
+  requestProxyMode: RequestProxyMode
+  customProxy: string
   proxyBypassList: string
   autoStartKernel: boolean
   autoRestartKernel: boolean
@@ -88,8 +104,13 @@ export interface AppSettings {
       args: string[]
     }
   }
+  plugins: {
+    sources: { enable: boolean; name: string; url: string }[]
+  }
   pluginSettings: Record<string, Record<string, any>>
   githubApiToken: string
+  githubDownloadAcceleration: boolean
+  githubDownloadMirror: string
   multipleInstance: boolean
   addPluginToMenu: boolean
   addGroupToMenu: boolean
@@ -98,6 +119,7 @@ export interface AppSettings {
   debugNoAnimation: boolean
   debugNoRounded: false
   debugBorder: boolean
+  debugUsePointer: boolean
   pages: string[]
 }
 
@@ -133,6 +155,7 @@ export interface Plugin {
   triggers: PluginTrigger[]
   tags: string[]
   hasUI: boolean
+  group: string
   menus: Record<string, string>
   context: {
     profiles: Recordable
@@ -143,8 +166,6 @@ export interface Plugin {
   }
   configuration: PluginConfiguration[]
   disabled: boolean
-  install: boolean
-  installed: boolean
   status: number // 0: Normal 1: Running 2: Stopped
   // Not Config
   updating?: boolean
@@ -183,6 +204,8 @@ export interface Subscription {
   includeProtocol: string
   excludeProtocol: string
   proxyPrefix: string
+  requestProxyMode: RequestProxyMode
+  customProxy: string
   disabled: boolean
   inSecure: boolean
   proxies: { id: string; tag: string; type: string }[]

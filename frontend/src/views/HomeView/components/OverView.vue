@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { ProcessMemory } from '@/bridge'
@@ -9,9 +9,9 @@ import { formatBytes, handleChangeMode, message } from '@/utils'
 
 import { useModal } from '@/components/Modal'
 
-const CommonController = defineAsyncComponent(() => import('./CommonController.vue'))
-const ConnectionsController = defineAsyncComponent(() => import('./ConnectionsController.vue'))
-const LogsController = defineAsyncComponent(() => import('./LogsController.vue'))
+import CommonController from './CommonController.vue'
+import ConnectionsController from './ConnectionsController.vue'
+import LogsController from './LogsController.vue'
 
 const trafficHistory = ref<[number[], number[]]>([[], []])
 const statistics = ref({
@@ -110,7 +110,7 @@ const onSystemProxySwitchChange = async (enable: boolean) => {
 
 let latestCoreMemoryUsageTime: number
 const getCoreMemoryUsage = async (fallback: number) => {
-  if (latestCoreMemoryUsageTime && Date.now() - latestCoreMemoryUsageTime < 3_000) {
+  if (latestCoreMemoryUsageTime && Date.now() - latestCoreMemoryUsageTime < 30_000) {
     return fallback
   }
   const useage = await ProcessMemory(kernelApiStore.pid).catch(() => fallback)

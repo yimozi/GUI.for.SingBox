@@ -34,8 +34,8 @@ export function FileExists(arg1) {
   return window['go']['bridge']['App']['FileExists'](arg1);
 }
 
-export function GetEnv() {
-  return window['go']['bridge']['App']['GetEnv']();
+export function GetEnv(arg1) {
+  return window['go']['bridge']['App']['GetEnv'](arg1);
 }
 
 export function GetInterfaces() {
@@ -60,10 +60,6 @@ export function MakeDir(arg1) {
 
 export function MoveFile(arg1, arg2) {
   return window['go']['bridge']['App']['MoveFile'](arg1, arg2);
-}
-
-export function Notify(arg1, arg2, arg3, arg4) {
-  return window['go']['bridge']['App']['Notify'](arg1, arg2, arg3, arg4);
 }
 
 export function OpenDir(arg1) {
@@ -120,6 +116,18 @@ export function StartServer(arg1, arg2, arg3) {
 
 export function StopServer(arg1) {
   return window['go']['bridge']['App']['StopServer'](arg1);
+}
+
+export function TcpPing(arg1, arg2) {
+  return window['go']['bridge']['App']['TcpPing'](arg1, arg2);
+}
+
+export function TcpRequest(arg1, arg2, arg3) {
+  return window['go']['bridge']['App']['TcpRequest'](arg1, arg2, arg3);
+}
+
+export function UdpRequest(arg1, arg2, arg3) {
+  return window['go']['bridge']['App']['UdpRequest'](arg1, arg2, arg3);
 }
 
 export function UnzipGZFile(arg1, arg2) {

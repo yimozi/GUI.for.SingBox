@@ -14,9 +14,9 @@ import {
   DnsServer,
 } from '@/enums/kernel'
 
-export const CoreStopOutputKeyword = 'sing-box started'
 export const CoreWorkingDirectory = 'data/sing-box'
 export const CorePidFilePath = CoreWorkingDirectory + '/pid.txt'
+export const CoreLogFilePath = CoreWorkingDirectory + '/sing-box.log'
 export const CoreConfigFilePath = CoreWorkingDirectory + '/config.json'
 export const CoreCacheFilePath = CoreWorkingDirectory + '/cache.db'
 

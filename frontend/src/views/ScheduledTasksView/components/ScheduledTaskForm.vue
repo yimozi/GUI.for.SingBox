@@ -2,6 +2,7 @@
 import { ref, inject, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { IsNotificationAvailable, RequestNotificationAuthorization } from '@/bridge'
 import { ScheduledTaskOptions } from '@/constant/app'
 import { ScheduledTasksType } from '@/enums/app'
 import {
@@ -117,6 +118,20 @@ const handleViewNextRuns = () => {
   alert('Next Run Time', list.join('\n'))
 }
 
+const onNotificationChange = async (v: boolean) => {
+  if (v) {
+    try {
+      if (!(await IsNotificationAvailable())) {
+        throw 'Notifications not available on this platform'
+      }
+      await RequestNotificationAuthorization()
+    } catch (error: any) {
+      task.value.notification = false
+      message.warn(error)
+    }
+  }
+}
+
 if (props.id) {
   const s = scheduledTasksStore.getScheduledTaskById(props.id)
   if (s) {
@@ -181,7 +196,7 @@ defineExpose({ modalSlots })
     </div>
     <div class="form-item">
       {{ t('scheduledtask.notification') }}
-      <Switch v-model="task.notification" />
+      <Switch v-model="task.notification" @change="onNotificationChange" />
     </div>
 
     <div v-if="task.type === ScheduledTasksType.UpdateSubscription">
@@ -207,7 +222,7 @@ defineExpose({ modalSlots })
         <Card
           v-for="r in rulesetsStore.rulesets"
           :key="r.id"
-          :title="r.tag"
+          :title="r.name"
           :selected="task.rulesets.includes(r.id)"
           @click="handleUse(task.rulesets, r.id)"
         >

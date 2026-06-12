@@ -5,6 +5,7 @@ import { sampleID } from '@/utils'
 
 interface ExecOptions {
   PidFile?: string
+  LogFile?: string
   Convert?: boolean
   Env?: Record<string, any>
   StopOutputKeyword?: string
@@ -17,6 +18,7 @@ interface ExecOptions {
 const mergeExecOptions = (options: ExecOptions) => {
   const mergedExecOpts = {
     PidFile: options.PidFile ?? '',
+    LogFile: options.LogFile ?? '',
     Convert: options.Convert ?? options.convert ?? false,
     Env: options.Env ?? options.env ?? {},
     StopOutputKeyword: options.StopOutputKeyword ?? options.stopOutputKeyword ?? '',
@@ -37,7 +39,7 @@ export const ExecBackground = async (
   path: string,
   args: string[] = [],
   onOut?: (out: string) => void,
-  onEnd?: () => void,
+  onEnd?: (out: string) => void,
   options: ExecOptions = {},
 ) => {
   const outEvent = (onOut && sampleID()) || ''
@@ -59,10 +61,10 @@ export const ExecBackground = async (
   }
 
   if (endEvent) {
-    EventsOn(endEvent, () => {
+    EventsOn(endEvent, (data: any) => {
       outEvent && EventsOff(outEvent)
       EventsOff(endEvent)
-      onEnd?.()
+      onEnd?.(data)
     })
   }
 

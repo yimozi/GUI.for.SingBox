@@ -1,23 +1,23 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
 import { useI18n, I18nT } from 'vue-i18n'
 
 import { OpenURI } from '@/bridge'
 import { DraggableOptions, ViewOptions } from '@/constant/app'
 import { PluginTriggerEvent, PluginTrigger, View } from '@/enums/app'
 import { usePluginsStore, useAppSettingsStore, useEnvStore } from '@/stores'
-import { debounce, message } from '@/utils'
+import { debounce, message, deepClone } from '@/utils'
 
 import Button from '@/components/Button/index.vue'
 import { useModal } from '@/components/Modal'
 
 import type { Menu, Plugin } from '@/types/app'
 
-const PluginChangelog = defineAsyncComponent(() => import('./components/PluginChangelog.vue'))
-const PluginConfigurator = defineAsyncComponent(() => import('./components/PluginConfigurator.vue'))
-const PluginForm = defineAsyncComponent(() => import('./components/PluginForm.vue'))
-const PluginHub = defineAsyncComponent(() => import('./components/PluginHub.vue'))
-const PluginView = defineAsyncComponent(() => import('./components/PluginView.vue'))
+import PluginChangelog from './components/PluginChangelog.vue'
+import PluginConfigurator from './components/PluginConfigurator.vue'
+import PluginForm from './components/PluginForm.vue'
+import PluginHub from './components/PluginHub.vue'
+import PluginView from './components/PluginView.vue'
 
 const menuList: Menu[] = [
   {
@@ -126,11 +126,12 @@ const handleDeletePlugin = async (p: Plugin) => {
 }
 
 const handleDisablePlugin = async (p: Plugin) => {
+  const nextPlugin = deepClone(p)
+  nextPlugin.disabled = !nextPlugin.disabled
+
   try {
-    p.disabled = !p.disabled
-    pluginsStore.editPlugin(p.id, p)
+    await pluginsStore.editPlugin(p.id, nextPlugin)
   } catch (error: any) {
-    p.disabled = !p.disabled
     console.error('handleDisablePlugin: ', error)
     message.error(error)
   }
@@ -139,22 +140,6 @@ const handleDisablePlugin = async (p: Plugin) => {
 const handleEditPluginCode = (id: string, title: string) => {
   modalApi.setProps({ title, width: '90' })
   modalApi.setContent(PluginView, { id }).open()
-}
-
-const handleInstallation = async (p: Plugin) => {
-  p.loading = true
-  try {
-    if (p.installed) {
-      await pluginsStore.manualTrigger(p.id, PluginTriggerEvent.OnUninstall)
-    } else {
-      await pluginsStore.manualTrigger(p.id, PluginTriggerEvent.OnInstall)
-    }
-    p.installed = !p.installed
-    await pluginsStore.editPlugin(p.id, p)
-  } catch (error: any) {
-    message.error(error)
-  }
-  p.loading = false
 }
 
 const handleOnRun = async (p: Plugin) => {
@@ -313,12 +298,7 @@ const onSortUpdate = debounce(pluginsStore.savePlugins, 1000)
           <Button type="link" size="small" icon="more" />
           <template #overlay>
             <div class="flex flex-col gap-4 min-w-64 p-4">
-              <Button
-                :loading="p.updating"
-                :disabled="p.disabled"
-                type="text"
-                @click="handleUpdatePlugin(p)"
-              >
+              <Button :loading="p.updating" type="text" @click="handleUpdatePlugin(p)">
                 {{ t('common.update') }}
               </Button>
               <Button type="text" @click="handleDisablePlugin(p)">
@@ -327,7 +307,7 @@ const onSortUpdate = debounce(pluginsStore.savePlugins, 1000)
               <Button type="text" @click="handleEditPlugin(p.id)">
                 {{ t('common.develop') }}
               </Button>
-              <Button v-if="!p.install || !p.installed" type="text" @click="handleDeletePlugin(p)">
+              <Button type="text" @click="handleDeletePlugin(p)">
                 {{ t('common.delete') }}
               </Button>
             </div>
@@ -335,13 +315,7 @@ const onSortUpdate = debounce(pluginsStore.savePlugins, 1000)
         </Dropdown>
 
         <template v-else>
-          <Button
-            :disabled="p.disabled"
-            :loading="p.updating"
-            type="text"
-            size="small"
-            @click="handleUpdatePlugin(p)"
-          >
+          <Button :loading="p.updating" type="text" size="small" @click="handleUpdatePlugin(p)">
             {{ t('common.update') }}
           </Button>
           <Button type="text" size="small" @click="handleDisablePlugin(p)">
@@ -350,12 +324,7 @@ const onSortUpdate = debounce(pluginsStore.savePlugins, 1000)
           <Button type="text" size="small" @click="handleEditPlugin(p.id)">
             {{ t('common.develop') }}
           </Button>
-          <Button
-            :disabled="p.install && p.installed"
-            type="text"
-            size="small"
-            @click="handleDeletePlugin(p)"
-          >
+          <Button type="text" size="small" @click="handleDeletePlugin(p)">
             {{ t('common.delete') }}
           </Button>
         </template>
@@ -403,20 +372,9 @@ const onSortUpdate = debounce(pluginsStore.savePlugins, 1000)
           {{ t('plugins.source') }}
         </Button>
 
-        <Button
-          v-if="p.install"
-          :loading="p.loading"
-          type="link"
-          size="small"
-          auto-size
-          @click="handleInstallation(p)"
-        >
-          {{ t(p.installed ? 'common.uninstall' : 'common.install') }}
-        </Button>
-
         <template v-if="p.triggers.includes(PluginTrigger.OnManual)">
           <Button
-            v-if="!p.disabled && (!p.install || p.installed)"
+            v-if="!p.disabled"
             :loading="p.running"
             :icon="p.hasUI ? 'sparkle' : undefined"
             type="primary"

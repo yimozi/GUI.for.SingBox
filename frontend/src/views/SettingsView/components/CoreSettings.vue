@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
-
 import { useModal } from '@/components/Modal'
 
-const BranchDetail = defineAsyncComponent(() => import('./components/BranchDetail.vue'))
-const CoreConfiguration = defineAsyncComponent(() => import('./components/CoreConfig.vue'))
-const SwitchBranch = defineAsyncComponent(() => import('./components/SwitchBranch.vue'))
+import BranchDetail from './components/BranchDetail.vue'
+import CoreConfiguration from './components/CoreConfig.vue'
+import SwitchBranch from './components/SwitchBranch.vue'
 
 const [ConfigModal, modalApi] = useModal({})
 
@@ -16,7 +14,7 @@ const handleCoreConfiguraion = async (isAlpha: boolean) => {
 </script>
 
 <template>
-  <div>
+  <div class="flex flex-col gap-8 pr-20 mb-8">
     <BranchDetail :is-alpha="false" @config="handleCoreConfiguraion(false)" />
     <BranchDetail :is-alpha="true" @config="handleCoreConfiguraion(true)" />
     <SwitchBranch />

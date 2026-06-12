@@ -8,6 +8,7 @@ import {
 } from '@/bridge'
 import { ColorOptions, ThemeOptions } from '@/constant/app'
 import { ModeOptions } from '@/constant/kernel'
+import { OS } from '@/enums/app'
 import i18n from '@/lang'
 import {
   useAppSettingsStore,
@@ -15,6 +16,7 @@ import {
   useEnvStore,
   usePluginsStore,
   useAppStore,
+  useProfilesStore,
 } from '@/stores'
 import {
   debounce,
@@ -33,8 +35,8 @@ const getTrayIcons = () => {
   const kernelApiStore = useKernelApiStore()
 
   const themeMode = appSettings.themeMode
-  const ext = envStore.env.os === 'linux' ? '.png' : '.ico'
-  const folder = envStore.env.os === 'linux' ? 'imgs' : 'icons'
+  const ext = envStore.env.os === OS.Linux ? '.png' : '.ico'
+  const folder = envStore.env.os === OS.Linux ? 'imgs' : 'icons'
   let icon = `data/.cache/${folder}/tray_normal_${themeMode}${ext}`
 
   if (kernelApiStore.running) {
@@ -81,6 +83,7 @@ const getTrayMenus = () => {
   const appSettings = useAppSettingsStore()
   const kernelApiStore = useKernelApiStore()
   const pluginsStore = usePluginsStore()
+  const profilesStore = useProfilesStore()
 
   let pluginMenus: MenuItem[] = []
   let pluginMenusHidden = !appSettings.app.addPluginToMenu
@@ -91,8 +94,16 @@ const getTrayMenus = () => {
   if (!groupMenusHidden) {
     const { proxies } = kernelApiStore
     if (!proxies) return []
+    const hiddenList = (profilesStore.currentProfile?.outbounds || []).flatMap((v) =>
+      v.hidden ? v.tag : [],
+    )
     groupMenus = Object.values(proxies)
-      .filter((v) => ['Selector', 'URLTest'].includes(v.type) && v.name !== 'GLOBAL')
+      .filter(
+        (v) =>
+          ['Selector', 'URLTest'].includes(v.type) &&
+          v.name !== 'GLOBAL' &&
+          !hiddenList.includes(v.name),
+      )
       .concat(proxies.GLOBAL || [])
       .map((group) => {
         const all = (group.all || [])
@@ -129,6 +140,7 @@ const getTrayMenus = () => {
               type: 'item',
               text: proxy.name,
               show: true,
+              checkable: true,
               checked: proxy.name === group.now,
               event: () => {
                 handleUseProxy(group, proxy)
@@ -167,12 +179,12 @@ const getTrayMenus = () => {
     {
       type: 'item',
       text: 'tray.showMainWindow',
-      hidden: envStore.env.os === 'windows',
+      hidden: envStore.env.os === OS.Windows,
       event: ShowMainWindow,
     },
     {
       type: 'separator',
-      hidden: envStore.env.os === 'windows',
+      hidden: envStore.env.os === OS.Windows,
     },
     {
       type: 'item',
@@ -181,6 +193,7 @@ const getTrayMenus = () => {
       children: ModeOptions.map((mode) => ({
         type: 'item',
         text: mode.label,
+        checkable: true,
         checked: kernelApiStore.config.mode === mode.value,
         event: () => handleChangeMode(mode.value),
       })),
@@ -267,6 +280,7 @@ const getTrayMenus = () => {
           children: ThemeOptions.map((theme) => ({
             type: 'item',
             text: theme.label,
+            checkable: true,
             checked: appSettings.app.theme === theme.value,
             event: () => (appSettings.app.theme = theme.value),
           })),
@@ -277,6 +291,7 @@ const getTrayMenus = () => {
           children: ColorOptions.map((color) => ({
             type: 'item',
             text: color.label,
+            checkable: true,
             checked: appSettings.app.color === color.value,
             event: () => (appSettings.app.color = color.value),
           })),
@@ -287,6 +302,7 @@ const getTrayMenus = () => {
           children: appStore.locales.map((v) => ({
             type: 'item',
             text: v.label,
+            checkable: true,
             checked: appSettings.app.lang === v.value,
             event: () => (appSettings.app.lang = v.value),
           })),
@@ -324,7 +340,7 @@ export const updateTrayAndMenus = debounce(async () => {
   const trayIcons = getTrayIcons()
   const pluginsStore = usePluginsStore()
 
-  const isDarwin = useEnvStore().env.os === 'darwin'
+  const isDarwin = useEnvStore().env.os === OS.Darwin
   const title = isDarwin ? '' : APP_TITLE
 
   const tray = { icon: trayIcons, title, tooltip: APP_TITLE + ' ' + APP_VERSION }

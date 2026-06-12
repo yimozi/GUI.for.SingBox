@@ -18,7 +18,7 @@ export function ExitApp():Promise<void>;
 
 export function FileExists(arg1:string):Promise<bridge.FlagResult>;
 
-export function GetEnv():Promise<bridge.EnvResult>;
+export function GetEnv(arg1:string):Promise<any>;
 
 export function GetInterfaces():Promise<bridge.FlagResult>;
 
@@ -31,8 +31,6 @@ export function ListServer():Promise<bridge.FlagResult>;
 export function MakeDir(arg1:string):Promise<bridge.FlagResult>;
 
 export function MoveFile(arg1:string,arg2:string):Promise<bridge.FlagResult>;
-
-export function Notify(arg1:string,arg2:string,arg3:string,arg4:bridge.NotifyOptions):Promise<bridge.FlagResult>;
 
 export function OpenDir(arg1:string):Promise<bridge.FlagResult>;
 
@@ -61,6 +59,12 @@ export function ShowMainWindow():Promise<void>;
 export function StartServer(arg1:string,arg2:string,arg3:bridge.ServerOptions):Promise<bridge.FlagResult>;
 
 export function StopServer(arg1:string):Promise<bridge.FlagResult>;
+
+export function TcpPing(arg1:string,arg2:bridge.NetOptions):Promise<bridge.FlagResult>;
+
+export function TcpRequest(arg1:string,arg2:string,arg3:bridge.NetOptions):Promise<bridge.FlagResult>;
+
+export function UdpRequest(arg1:string,arg2:string,arg3:bridge.NetOptions):Promise<bridge.FlagResult>;
 
 export function UnzipGZFile(arg1:string,arg2:string):Promise<bridge.FlagResult>;
 

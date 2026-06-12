@@ -11,6 +11,7 @@ import {
   WindowIsMaximised,
   RestartApp,
 } from '@/bridge'
+import { OS } from '@/enums/app'
 import { useAppSettingsStore, useKernelApiStore, useEnvStore, useAppStore } from '@/stores'
 import { APP_TITLE, APP_VERSION, debounce, exitApp, reloadApp } from '@/utils'
 
@@ -24,7 +25,7 @@ const kernelApiStore = useKernelApiStore()
 const envStore = useEnvStore()
 const appStore = useAppStore()
 
-const isDarwin = envStore.env.os === 'darwin'
+const isDarwin = envStore.env.os === OS.Darwin
 
 const pinWindow = () => {
   isPinned.value = !isPinned.value
@@ -75,7 +76,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
       :style="{
         color: kernelApiStore.running ? 'var(--primary-color)' : 'var(--color)',
       }"
-      class="font-bold w-full h-full flex items-center"
+      class="font-bold w-full h-full flex items-center duration-200"
       @dblclick="WindowToggleMaximise"
     >
       {{ APP_TITLE }} {{ APP_VERSION }}

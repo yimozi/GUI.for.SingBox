@@ -1,16 +1,17 @@
 package bridge
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"io"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -19,13 +20,14 @@ func (a *App) Requests(method string, url string, headers map[string]string, bod
 	log.Printf("Requests: %v %v %v %v %v", method, url, headers, body, options)
 
 	client, ctx, cancel := withRequestOptionsClient(options)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(body))
 	if err != nil {
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 
-	req.Header = GetHeader(headers)
+	req.Header = requestHeaders(headers)
 
 	if options.CancelId != "" {
 		runtime.EventsOn(a.Ctx, options.CancelId, func(data ...any) {
@@ -49,17 +51,102 @@ func (a *App) Requests(method string, url string, headers map[string]string, bod
 	return HTTPResult{true, resp.StatusCode, resp.Header, string(b)}
 }
 
+func (a *App) TcpPing(address string, options NetOptions) FlagResult {
+	log.Printf("TcpPing: %s %v", address, options)
+
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", address, requestTimeout(options.Timeout))
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+	defer conn.Close()
+
+	return FlagResult{true, strconv.FormatInt(latency, 10)}
+}
+
+func (a *App) TcpRequest(address string, payload string, options NetOptions) FlagResult {
+	log.Printf("TcpRequest: %s %v", address, options)
+
+	body, err := netPayloadBytes(payload, options)
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	conn, err := net.DialTimeout("tcp", address, requestTimeout(options.Timeout))
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(requestTimeout(options.Timeout))); err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	if len(body) > 0 {
+		_, err = conn.Write(body)
+		if err != nil {
+			return FlagResult{false, err.Error()}
+		}
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			_ = tcpConn.CloseWrite()
+		}
+	}
+
+	resp, err := io.ReadAll(conn)
+	if err != nil {
+		if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() || len(resp) == 0 {
+			return FlagResult{false, err.Error()}
+		}
+	}
+
+	return FlagResult{true, netPayloadString(resp, options)}
+}
+
+func (a *App) UdpRequest(address string, payload string, options NetOptions) FlagResult {
+	log.Printf("UdpRequest: %s %v", address, options)
+
+	body, err := netPayloadBytes(payload, options)
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	conn, err := net.DialTimeout("udp", address, requestTimeout(options.Timeout))
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(requestTimeout(options.Timeout))); err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	_, err = conn.Write(body)
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	buf := make([]byte, 65535)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return FlagResult{false, err.Error()}
+	}
+
+	return FlagResult{true, netPayloadString(buf[:n], options)}
+}
+
 func (a *App) Download(method string, url string, path string, headers map[string]string, event string, options RequestOptions) HTTPResult {
 	log.Printf("Download: %s %s %s %v %s %v", method, url, path, headers, event, options)
 
 	client, ctx, cancel := withRequestOptionsClient(options)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 
-	req.Header = GetHeader(headers)
+	req.Header = requestHeaders(headers)
 
 	if options.CancelId != "" {
 		runtime.EventsOn(a.Ctx, options.CancelId, func(data ...any) {
@@ -75,7 +162,7 @@ func (a *App) Download(method string, url string, path string, headers map[strin
 	}
 	defer resp.Body.Close()
 
-	path = GetPath(path)
+	path = resolvePath(path)
 
 	err = os.MkdirAll(filepath.Dir(path), os.ModePerm)
 	if err != nil {
@@ -86,12 +173,15 @@ func (a *App) Download(method string, url string, path string, headers map[strin
 	if err != nil {
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
-	defer file.Close()
 
 	reader := wrapWithProgress(resp.Body, resp.ContentLength, event, a)
 
 	_, err = io.Copy(file, reader)
 	if err != nil {
+		file.Close()
+		return HTTPResult{false, 500, nil, err.Error()}
+	}
+	if err := file.Close(); err != nil {
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 
@@ -101,40 +191,43 @@ func (a *App) Download(method string, url string, path string, headers map[strin
 func (a *App) Upload(method string, url string, path string, headers map[string]string, event string, options RequestOptions) HTTPResult {
 	log.Printf("Upload: %s %s %s %v %s %v", method, url, path, headers, event, options)
 
-	path = GetPath(path)
+	path = resolvePath(path)
 
 	file, err := os.Open(path)
 	if err != nil {
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
-	defer file.Close()
 
 	fileStat, err := file.Stat()
 	if err != nil {
+		file.Close()
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
+	bodyReader, bodyWriter := io.Pipe()
+	writer := multipart.NewWriter(bodyWriter)
+	copyErr := make(chan error, 1)
 
-	part, err := writer.CreateFormFile(options.FileField, path)
-	if err != nil {
-		return HTTPResult{false, 500, nil, err.Error()}
-	}
+	go func() {
+		defer file.Close()
 
-	reader := wrapWithProgress(file, fileStat.Size(), event, a)
-
-	_, err = io.Copy(part, reader)
-	if err != nil {
-		return HTTPResult{false, 500, nil, err.Error()}
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return HTTPResult{false, 500, nil, err.Error()}
-	}
+		part, err := writer.CreateFormFile(options.FileField, filepath.Base(path))
+		if err == nil {
+			_, err = io.Copy(part, wrapWithProgress(file, fileStat.Size(), event, a))
+		}
+		if closeErr := writer.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			_ = bodyWriter.CloseWithError(err)
+		} else {
+			_ = bodyWriter.Close()
+		}
+		copyErr <- err
+	}()
 
 	client, ctx, cancel := withRequestOptionsClient(options)
+	defer cancel()
 
 	if options.CancelId != "" {
 		runtime.EventsOn(a.Ctx, options.CancelId, func(data ...any) {
@@ -144,19 +237,27 @@ func (a *App) Upload(method string, url string, path string, headers map[string]
 		defer runtime.EventsOff(a.Ctx, options.CancelId)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
+		_ = bodyReader.CloseWithError(err)
+		<-copyErr
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 
-	req.Header = GetHeader(headers)
+	req.Header = requestHeaders(headers)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := client.Do(req)
 	if err != nil {
+		_ = bodyReader.CloseWithError(err)
+		<-copyErr
 		return HTTPResult{false, 500, nil, err.Error()}
 	}
 	defer resp.Body.Close()
+
+	if err := <-copyErr; err != nil {
+		return HTTPResult{false, 500, nil, err.Error()}
+	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -193,13 +294,8 @@ func wrapWithProgress(r io.Reader, size int64, event string, a *App) io.Reader {
 
 func withRequestOptionsClient(options RequestOptions) (*http.Client, context.Context, context.CancelFunc) {
 	client := &http.Client{
-		Timeout: GetTimeout(options.Timeout),
-		Transport: &http.Transport{
-			Proxy: GetProxy(options.Proxy),
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: options.Insecure,
-			},
-		},
+		Timeout:   requestTimeout(options.Timeout),
+		Transport: requestTransport(options),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if !options.Redirect {
 				return http.ErrUseLastResponse

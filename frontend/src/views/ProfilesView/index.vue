@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
 import { useI18n, I18nT } from 'vue-i18n'
 
 import { ClipboardSetText } from '@/bridge'
@@ -19,8 +18,8 @@ import { useModal } from '@/components/Modal'
 
 import type { Menu } from '@/types/app'
 
-const ProfileForm = defineAsyncComponent(() => import('./components/ProfileForm.vue'))
-const ProfileEditor = defineAsyncComponent(() => import('./components/ProfileEditor.vue'))
+import ProfileEditor from './components/ProfileEditor.vue'
+import ProfileForm from './components/ProfileForm.vue'
 
 const { t } = useI18n()
 const [Modal, modalApi] = useModal({})
@@ -104,7 +103,7 @@ const secondaryMenusList: Menu[] = [
     },
   },
   {
-    label: 'Manual Edit (Beta)',
+    label: 'profiles.editSourceFile',
     handler: async (id: string) => {
       const profile = profilesStore.getProfileById(id)!
       modalApi.setProps({ title: profile.name, width: '90', height: '90' })

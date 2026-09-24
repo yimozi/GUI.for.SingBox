@@ -9,8 +9,6 @@ import {
 } from '@/enums/kernel'
 import { useProfilesStore, useRulesetsStore, useSubscribesStore } from '@/stores'
 
-import type { Subscription } from '@/types/app'
-
 import { createTextMatcher, deepAssign, sampleID } from './others'
 
 const supportedRuleTypes = [
@@ -42,7 +40,7 @@ const buildTagIdMapping = (prefix: string, arr?: Recordable[]): Recordable<strin
 }
 
 type RestoreProfileOptions = {
-  profile?: IProfile
+  profile?: App.Profile
   subscriptionIds?: string[]
 }
 
@@ -50,7 +48,7 @@ export const restoreProfile = (
   config: Recordable,
   name = sampleID(),
   options: RestoreProfileOptions = {},
-): IProfile => {
+): App.Profile => {
   const template = useProfilesStore().getProfileTemplate()
 
   const { profile, subscriptionIds } = options
@@ -59,6 +57,15 @@ export const restoreProfile = (
   const OutboundsIds = buildTagIdMapping('out-', config.outbounds)
   const RouteRuleSetIds = buildTagIdMapping('ruleset-', config.route?.rule_set)
   const DnsServersIds = buildTagIdMapping('dns-', config.dns?.servers)
+  const HttpClientOutboundIds = (config.http_clients || []).reduce(
+    (mapping: Recordable<string>, client: Recordable) => {
+      mapping[client.tag] = OutboundsIds[client.detour] || ''
+      return mapping
+    },
+    {},
+  )
+  const defaultHttpClientTag =
+    config.route?.default_http_client || config.http_clients?.[0]?.tag || ''
 
   return {
     id: profile?.id || sampleID(),
@@ -73,7 +80,11 @@ export const restoreProfile = (
       subscriptionIds || [],
     ),
     route: {
-      rule_set: restoreRouteRuleset(config.route?.rule_set || [], RouteRuleSetIds, OutboundsIds),
+      rule_set: restoreRouteRuleset(
+        config.route?.rule_set || [],
+        RouteRuleSetIds,
+        HttpClientOutboundIds,
+      ),
       rules: restoreRouteRules(
         config.route?.rules || [],
         InboundsIds,
@@ -86,6 +97,7 @@ export const restoreProfile = (
       find_process: config.route?.find_process ?? template.route.find_process,
       default_interface: config.route?.default_interface ?? template.route.default_interface,
       final: OutboundsIds[config.route?.final] ?? template.route.final,
+      default_http_client: HttpClientOutboundIds[defaultHttpClientTag] || '',
       default_domain_resolver: {
         server:
           DnsServersIds[config.route?.default_domain_resolver?.server] ??
@@ -98,7 +110,16 @@ export const restoreProfile = (
     dns: {
       disable_cache: config.dns?.disable_cache ?? template.dns.disable_cache,
       disable_expire: config.dns?.disable_expire ?? template.dns.disable_expire,
-      independent_cache: config.dns?.independent_cache ?? template.dns.independent_cache,
+      optimistic: {
+        enabled:
+          (typeof config.dns?.optimistic === 'object'
+            ? config.dns.optimistic?.enabled
+            : config.dns?.optimistic) ?? false,
+        timeout:
+          typeof config.dns?.optimistic === 'object'
+            ? (config.dns.optimistic?.timeout ?? '3d')
+            : '3d',
+      },
       final: DnsServersIds[config.dns?.final] ?? template.dns.final,
       strategy: config.dns?.strategy ?? template.dns.strategy,
       client_subnet: config.dns?.client_subnet ?? template.dns.client_subnet,
@@ -110,7 +131,7 @@ export const restoreProfile = (
   }
 }
 
-const restoreExperimental = (raw: Recordable, OutboundsIds: Recordable): IExperimental => {
+const restoreExperimental = (raw: Recordable, OutboundsIds: Recordable): App.Experimental => {
   const template = Defaults.DefaultExperimental()
   const experimental = deepAssign(template, raw)
   experimental.clash_api.external_ui_download_detour =
@@ -118,10 +139,14 @@ const restoreExperimental = (raw: Recordable, OutboundsIds: Recordable): IExperi
   return experimental
 }
 
-const restoreInbounds = (inbounds: Recordable[], InboundsIds: Recordable): IInbound[] => {
+const restoreInbounds = (inbounds: Recordable[], InboundsIds: Recordable): App.Inbound[] => {
   return inbounds.flatMap((raw) => {
-    if (![Inbound.Mixed, Inbound.Http, Inbound.Socks, Inbound.Tun].includes(raw.type)) return []
-    const inbound: IInbound = {
+    if (
+      ![Inbound.Mixed, Inbound.Http, Inbound.Socks, Inbound.Tun, Inbound.Direct].includes(raw.type)
+    ) {
+      return []
+    }
+    const inbound: App.Inbound = {
       id: InboundsIds[raw.tag],
       tag: raw.tag,
       type: raw.type,
@@ -141,9 +166,22 @@ const restoreInbounds = (inbounds: Recordable[], InboundsIds: Recordable): IInbo
         stack: raw.stack ?? template.stack,
       }
     }
+    if (raw.type === Inbound.Direct) {
+      const template = Defaults.DefaultInboundDirect()
+      inbound.direct = {
+        listen: {
+          listen: raw.listen ?? template.listen.listen,
+          listen_port: raw.listen_port ?? template.listen.listen_port,
+          tcp_fast_open: raw.tcp_fast_open ?? template.listen.tcp_fast_open,
+          tcp_multi_path: raw.tcp_multi_path ?? template.listen.tcp_multi_path,
+          udp_fragment: raw.udp_fragment ?? template.listen.udp_fragment,
+        },
+        network: raw.network ?? template.network,
+      }
+    }
     if ([Inbound.Mixed, Inbound.Http, Inbound.Socks].includes(raw.type)) {
       const template = Defaults.DefaultInboundMixed()
-      inbound[raw.type as Exclude<Inbound, Inbound.Tun>] = {
+      inbound[raw.type as Exclude<Inbound, Inbound.Tun | Inbound.Direct>] = {
         listen: {
           listen: raw.listen ?? template.listen.listen,
           listen_port: raw.listen_port ?? template.listen.listen_port,
@@ -161,14 +199,14 @@ const restoreInbounds = (inbounds: Recordable[], InboundsIds: Recordable): IInbo
 const restoreOutbounds = (
   outbounds: Recordable[],
   OutboundsIds: Recordable,
-  originalOutbounds: IOutbound[],
+  originalOutbounds: App.Outbound[],
   subscriptionIds: string[],
-): IOutbound[] => {
+): App.Outbound[] => {
   const subscribesStore = useSubscribesStore()
 
-  const subscriptionCache = new Map<string, Subscription>()
+  const subscriptionCache = new Map<string, App.Subscription>()
   const proxyToSubMap = new Map<string, { sub: string; id: string }>()
-  const originalOutboundMap = new Map<string, IOutbound>()
+  const originalOutboundMap = new Map<string, App.Outbound>()
 
   const groupTags = new Set(
     outbounds
@@ -199,7 +237,7 @@ const restoreOutbounds = (
     outbound.tag = raw.tag
     outbound.type = raw.type
 
-    let newOutbounds: IProxy[] = []
+    let newOutbounds: App.Proxy[] = []
 
     raw.outbounds?.forEach((tag: string) => {
       const isBuiltIn = [Outbound.Direct, Outbound.Block].includes(tag as Outbound)
@@ -275,8 +313,8 @@ const restoreOutbounds = (
 const restoreRouteRuleset = (
   rulesets: Recordable[],
   RouteRuleSetIds: Recordable,
-  OutboundsIds: Recordable,
-): IRuleSet[] => {
+  HttpClientOutboundIds: Recordable,
+): App.ProfileRuleSet[] => {
   const rulesetsStore = useRulesetsStore()
   return rulesets.flatMap((raw) => {
     const ruleset = Defaults.DefaultRouteRuleset()
@@ -307,8 +345,8 @@ const restoreRouteRuleset = (
       if ('url' in raw) {
         ruleset.url = raw.url
       }
-      if ('download_detour' in raw) {
-        ruleset.download_detour = OutboundsIds[raw.download_detour]
+      if (typeof raw.http_client === 'string') {
+        ruleset.http_client = HttpClientOutboundIds[raw.http_client] || ''
       }
       if ('update_interval' in raw) {
         ruleset.update_interval = raw.update_interval
@@ -324,7 +362,7 @@ const restoreRouteRules = (
   OutboundsIds: Recordable,
   RouteRuleSetIds: Recordable,
   DnsServersIds: Recordable,
-): IRule[] => {
+): App.Rule[] => {
   return rules.flatMap((raw, i) => {
     const rule = Defaults.DefaultRouteRule()
 
@@ -403,7 +441,7 @@ const restoreDnsServers = (
   servers: Recordable[],
   DnsServersIds: Recordable,
   OutboundsIds: Recordable,
-): IDNSServer[] => {
+): App.DnsServerConfig[] => {
   return servers.flatMap((raw) => {
     if (!raw.type) return []
     const server = Defaults.DefaultDnsServer()
@@ -484,11 +522,12 @@ const restoreDnsRules = (
   InboundsIds: Recordable,
   RouteRuleSetIds: Recordable,
   DnsServersIds: Recordable,
-): IDNSRule[] => {
-  return rules.flatMap((raw: Recordable, i) => {
+): App.DnsRule[] => {
+  const dnsRules = rules.flatMap((raw: Recordable, i) => {
     const rule = Defaults.DefaultDnsRule()
     rule.id = 'rule-' + i
     rule.action = raw.action || RuleAction.Route
+    rule.match_response = raw.match_response === true ? '__true' : raw.match_response || ''
 
     const hits = supportedRuleTypes.filter((key) => key in raw)
     if (hits.length === 1) {
@@ -507,6 +546,8 @@ const restoreDnsRules = (
           disable_cache: undefined,
           strategy: undefined,
           server: undefined,
+          match_response: undefined,
+          tag: undefined,
         },
         null,
         2,
@@ -522,12 +563,12 @@ const restoreDnsRules = (
         : String(raw[rule.type])
     }
 
-    if (RuleAction.Route === raw.action) {
+    if (RuleAction.Route === raw.action || RuleAction.Evaluate === raw.action) {
       if ('server' in raw) {
         rule.server = DnsServersIds[raw.server]
       }
-      if ('strategy' in raw) {
-        rule.strategy = raw.strategy
+      if (RuleAction.Evaluate === raw.action && 'tag' in raw) {
+        rule.tag = raw.tag
       }
     } else if (RuleAction.Reject === raw.action) {
       if ('method' in raw) {
@@ -543,13 +584,14 @@ const restoreDnsRules = (
           client_subnet: undefined,
           strategy: undefined,
           server: undefined,
+          match_response: undefined,
           ...supportedRuleTypes.reduce((p, c) => ((p[c] = undefined), p), {} as Recordable),
         },
         null,
         2,
       )
     }
-    if ([RuleAction.Route, RuleAction.RouteOptions].includes(raw.action)) {
+    if ([RuleAction.Route, RuleAction.Evaluate, RuleAction.RouteOptions].includes(raw.action)) {
       if ('disable_cache' in raw) {
         rule.disable_cache = raw.disable_cache
       }
@@ -562,4 +604,14 @@ const restoreDnsRules = (
     }
     return rule
   })
+
+  dnsRules.forEach((rule) => {
+    if (rule.match_response && rule.match_response !== '__true') {
+      rule.match_response =
+        dnsRules.find((v) => v.action === RuleAction.Evaluate && v.tag === rule.match_response)
+          ?.id || ''
+    }
+  })
+
+  return dnsRules
 }

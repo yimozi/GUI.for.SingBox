@@ -32,7 +32,9 @@ func (a *App) Exec(path string, args []string, options ExecOptions) FlagResult {
 	cmd := exec.Command(exePath, args...)
 	SetCmdWindowHidden(cmd)
 
-	cmd.Dir = options.WorkingDirectory
+	if options.WorkingDirectory != "" {
+		cmd.Dir = resolvePath(options.WorkingDirectory)
+	}
 	cmd.Env = os.Environ()
 
 	for key, value := range options.Env {
@@ -41,12 +43,7 @@ func (a *App) Exec(path string, args []string, options ExecOptions) FlagResult {
 
 	out, err := cmd.CombinedOutput()
 
-	var output string
-	if options.Convert {
-		output = strings.TrimSpace(decodeGB18030(out))
-	} else {
-		output = strings.TrimSpace(string(out))
-	}
+	output := strings.TrimSpace(DecodeCommandOutput(out))
 
 	if err != nil {
 		if output == "" {
@@ -78,7 +75,9 @@ func (a *App) ExecBackground(path string, args []string, outEvent string, endEve
 	cmd := exec.Command(exePath, args...)
 	SetCmdWindowHidden(cmd)
 
-	cmd.Dir = options.WorkingDirectory
+	if options.WorkingDirectory != "" {
+		cmd.Dir = resolvePath(options.WorkingDirectory)
+	}
 	cmd.Env = os.Environ()
 
 	for key, value := range options.Env {
@@ -303,12 +302,7 @@ func scanAndEmitOutput(a *App, reader io.Reader, outEvent string, options ExecOp
 	stopOutput := false
 
 	for scanner.Scan() {
-		var text string
-		if options.Convert {
-			text = decodeGB18030(scanner.Bytes())
-		} else {
-			text = scanner.Text()
-		}
+		text := DecodeCommandOutput(scanner.Bytes())
 
 		if !stopOutput {
 			runtime.EventsEmit(a.Ctx, outEvent, text)
@@ -318,6 +312,8 @@ func scanAndEmitOutput(a *App, reader io.Reader, outEvent string, options ExecOp
 			}
 		}
 	}
+
+	_ = scanner.Err()
 }
 
 func tailAndEmitLogFile(a *App, path string, outEvent string, options ExecOptions, done <-chan struct{}, outputDone chan<- struct{}) {
@@ -329,9 +325,7 @@ func tailAndEmitLogFile(a *App, path string, outEvent string, options ExecOption
 	defer ticker.Stop()
 
 	emitLine := func(text string) bool {
-		if options.Convert {
-			text = decodeGB18030([]byte(text))
-		}
+		text = DecodeCommandOutput([]byte(text))
 		text = strings.TrimRight(text, "\r")
 
 		if text == "" {

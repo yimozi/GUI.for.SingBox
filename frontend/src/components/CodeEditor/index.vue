@@ -1,0 +1,241 @@
+<script setup lang="ts">
+import { autocompletion } from '@codemirror/autocomplete'
+import { indentWithTab } from '@codemirror/commands'
+import { css } from '@codemirror/lang-css'
+import { javascript } from '@codemirror/lang-javascript'
+import { json, jsonParseLinter } from '@codemirror/lang-json'
+import { yaml } from '@codemirror/lang-yaml'
+import { linter } from '@codemirror/lint'
+import { MergeView } from '@codemirror/merge'
+import { Compartment, EditorSelection } from '@codemirror/state'
+import { oneDark } from '@codemirror/theme-one-dark'
+import { keymap, placeholder as Placeholder } from '@codemirror/view'
+import { EditorView, basicSetup } from 'codemirror'
+import * as parserBabel from 'prettier/parser-babel'
+import * as parserYaml from 'prettier/parser-yaml'
+import estreePlugin from 'prettier/plugins/estree'
+import * as postcssPlugin from 'prettier/plugins/postcss'
+import * as prettier from 'prettier/standalone'
+import { watch, onUnmounted, onMounted, useTemplateRef, inject } from 'vue'
+
+import { Theme } from '@/enums/app'
+import { useAppSettingsStore } from '@/stores'
+import { debounce, message } from '@/utils'
+import { getCompletions } from '@/utils/completion'
+
+import { IS_IN_MODAL } from '@/components/Modal/index.vue'
+
+interface Props {
+  modelValue?: string
+  editable?: boolean
+  lang?: 'json' | 'javascript' | 'yaml' | 'css'
+  mode?: 'editor' | 'diff'
+  placeholder?: string
+  plugin?: Record<string, any>
+}
+
+const emit = defineEmits(['change', 'update:modelValue'])
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: '',
+  lang: 'json',
+  mode: 'editor',
+  placeholder: '',
+  plugin: undefined,
+})
+
+const { promise: editorReady, resolve: markEditorReady } = Promise.withResolvers()
+let internalUpdate = true
+
+watch(
+  () => props.modelValue,
+  async (val) => {
+    await editorReady
+    const view = editorView || mergeView?.b
+    if (view && val != view.state.doc.toString()) {
+      internalUpdate = false
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: val,
+        },
+      })
+    }
+  },
+)
+
+let editorView: EditorView
+let mergeView: MergeView
+const themeCompartment = new Compartment()
+const domRef = useTemplateRef('domRef')
+const appSettings = useAppSettingsStore()
+
+const onChange = debounce((content: string) => {
+  if (internalUpdate) {
+    emit('update:modelValue', content)
+    emit('change', content)
+  }
+  internalUpdate = true
+}, 300)
+
+const formatDoc = async (view: EditorView) => {
+  const { doc, selection } = view.state
+  const content = doc.toString()
+  try {
+    const parser = { javascript: 'babel', yaml: 'yaml', json: 'json', css: 'css' }[props.lang]
+    const plugins = {
+      javascript: [parserBabel, estreePlugin],
+      yaml: [parserYaml],
+      json: [parserBabel, estreePlugin],
+      css: [postcssPlugin],
+    }[props.lang]
+    const options = {
+      parser,
+      plugins,
+      // https://github.com/GUI-for-Cores/Plugin-Hub/blob/main/.prettierrc.json
+      semi: false,
+      tabWidth: 2,
+      singleQuote: true,
+      printWidth: 160,
+      trailingComma: 'none' as const,
+    }
+    // Map both ends of every selection, preserving its direction and main cursor.
+    const offsets = [...new Set(selection.ranges.flatMap(({ anchor, head }) => [anchor, head]))]
+    const results = await Promise.all(
+      offsets.map((cursorOffset) =>
+        prettier.formatWithCursor(content, { ...options, cursorOffset }),
+      ),
+    )
+    const formatted = results[0]!.formatted
+    const mappedOffsets = new Map(offsets.map((offset, i) => [offset, results[i]!.cursorOffset]))
+    // Formatting is asynchronous; don't overwrite newer edits or cursor movements.
+    if (view.state.doc !== doc || !view.state.selection.eq(selection)) return
+    if (content !== formatted) {
+      view.dispatch({
+        changes: { from: 0, to: content.length, insert: formatted },
+        selection: EditorSelection.create(
+          selection.ranges.map(({ anchor, head }) =>
+            EditorSelection.range(mappedOffsets.get(anchor)!, mappedOffsets.get(head)!),
+          ),
+          selection.mainIndex,
+        ),
+        scrollIntoView: true,
+      })
+    }
+  } catch (error: any) {
+    message.error(error.message || error)
+  }
+}
+
+watch(
+  () => appSettings.themeMode,
+  (theme) => {
+    const views = editorView ? [editorView] : [mergeView.a, mergeView.b]
+    views.forEach((view) => {
+      view.dispatch({
+        effects: themeCompartment.reconfigure(
+          theme === Theme.Dark ? [EditorView.theme({}, { dark: true }), oneDark] : [],
+        ),
+      })
+    })
+  },
+)
+
+let timer: number
+onMounted(() => (timer = setTimeout(() => initEditor(), inject(IS_IN_MODAL, false) ? 100 : 0)))
+onUnmounted(() => {
+  clearTimeout(timer)
+  const view = editorView || mergeView
+  view?.destroy()
+})
+
+defineExpose({
+  format: async () => {
+    await editorReady
+    const view = editorView || mergeView?.b
+    if (view) await formatDoc(view)
+  },
+})
+
+const initEditor = () => {
+  domRef.value!.innerHTML = ''
+
+  const extensions = [
+    basicSetup,
+    // keymap
+    keymap.of([
+      indentWithTab,
+      {
+        key: 'Shift-Alt-f',
+        run: function (v: EditorView) {
+          formatDoc(v)
+          return true
+        },
+      },
+    ]),
+    // code wrap
+    EditorView.lineWrapping,
+    // placeholder
+    Placeholder(props.placeholder),
+    // theme
+    themeCompartment.of(
+      appSettings.themeMode === Theme.Dark ? [EditorView.theme({}, { dark: true }), oneDark] : [],
+    ),
+    ...(props.lang === 'javascript'
+      ? [autocompletion({ override: getCompletions(props.plugin) })]
+      : []),
+    // lint
+    ...(props.lang === 'json' ? [linter(jsonParseLinter())] : []),
+    // lang
+    ...(['javascript', 'json', 'yaml', 'css'].includes(props.lang)
+      ? [{ javascript, json, yaml, css }[props.lang]()]
+      : []),
+    EditorView.updateListener.of((update) => {
+      update.docChanged && onChange(update.state.doc.toString())
+    }),
+  ]
+
+  if (props.mode === 'editor') {
+    editorView = new EditorView({
+      doc: props.modelValue,
+      parent: domRef.value!,
+      extensions: [...extensions, EditorView.editable.of(props.editable)],
+    })
+  } else {
+    mergeView = new MergeView({
+      parent: domRef.value!,
+      a: {
+        doc: props.modelValue,
+        extensions: [...extensions, EditorView.editable.of(false)],
+      },
+      b: {
+        doc: props.modelValue,
+        extensions: [...extensions, EditorView.editable.of(props.editable)],
+      },
+    })
+  }
+
+  markEditorReady(null)
+}
+</script>
+
+<template>
+  <div ref="domRef" @keydown.esc.stop @keydown.esc.prevent>
+    <div class="flex justify-center">
+      <Button loading type="link" />
+    </div>
+  </div>
+</template>
+
+<style lang="less" scoped>
+:deep(.cm-editor) {
+  height: 100%;
+}
+:deep(.cm-scroller) {
+  font-family: monaco, Consolas, Menlo, Courier, monospace;
+  font-size: 14px;
+}
+:deep(.cm-focused) {
+  outline: none;
+}
+</style>

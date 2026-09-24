@@ -5,7 +5,6 @@ export namespace bridge {
 	    LogFile: string;
 	    StopOutputKeyword: string;
 	    WorkingDirectory: string;
-	    Convert: boolean;
 	    Env: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
@@ -18,7 +17,6 @@ export namespace bridge {
 	        this.LogFile = source["LogFile"];
 	        this.StopOutputKeyword = source["StopOutputKeyword"];
 	        this.WorkingDirectory = source["WorkingDirectory"];
-	        this.Convert = source["Convert"];
 	        this.Env = source["Env"];
 	    }
 	}
@@ -133,6 +131,8 @@ export namespace bridge {
 	    Timeout: number;
 	    CancelId: string;
 	    FileField: string;
+	    Sha256: string;
+	    Stream: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RequestOptions(source);
@@ -146,6 +146,8 @@ export namespace bridge {
 	        this.Timeout = source["Timeout"];
 	        this.CancelId = source["CancelId"];
 	        this.FileField = source["FileField"];
+	        this.Sha256 = source["Sha256"];
+	        this.Stream = source["Stream"];
 	    }
 	}
 	export class ServerOptions {

@@ -7,11 +7,17 @@ import { DraggableOptions } from '@/constant/app'
 import { DefaultConnections } from '@/constant/kernel'
 import { useBool } from '@/hooks'
 import { useAppSettingsStore, useKernelApiStore } from '@/stores'
-import { addToRuleSet, formatBytes, formatRelativeTime, getDomainSuffixes, message, picker } from '@/utils'
+import {
+  addToRuleSet,
+  formatBytes,
+  formatRelativeTime,
+  getDomainSuffixes,
+  message,
+  picker,
+} from '@/utils'
 
 import type { PickerItem } from '@/components/Picker/index.vue'
 import type { Column } from '@/components/Table/index.vue'
-import type { Menu } from '@/types/app'
 import type { CoreApiConnectionsData } from '@/types/kernel'
 
 type TrafficCacheType = { up: number; down: number }
@@ -142,7 +148,7 @@ const columnTitleMap = computed(() => {
   return map
 })
 
-const menu: Menu[] = [
+const menu: App.Menu[] = [
   {
     label: 'common.details',
     handler: (record: Record<string, any>) => {
@@ -289,50 +295,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
-    <div class="flex items-center">
-      <Radio
-        v-model="isActive"
-        :options="[
-          { label: 'home.connections.active', value: true },
-          { label: 'home.connections.closed', value: false },
-        ]"
-        size="small"
+  <ModalContainer :scrollable="false">
+    <template #top>
+      <div class="flex items-center">
+        <Radio
+          v-model="isActive"
+          :options="[
+            { label: 'home.connections.active', value: true },
+            { label: 'home.connections.closed', value: false },
+          ]"
+          size="small"
+        />
+        <Input v-model="keywords" clearable size="small" placeholder="Search" class="ml-8 flex-1" />
+        <Button
+          :icon="isPause ? 'play' : 'pause'"
+          size="small"
+          type="text"
+          class="ml-8"
+          @click="togglePause"
+        />
+        <Button
+          v-if="isActive"
+          v-tips="'home.connections.closeAll'"
+          icon="close"
+          size="small"
+          type="text"
+          @click="handleCloseAll"
+        />
+        <Button
+          v-else
+          v-tips="'common.clear'"
+          size="small"
+          icon="clear"
+          type="text"
+          @click="handleClearClosedConns"
+        />
+        <Button icon="settings" size="small" type="text" @click="toggleSettings" />
+      </div>
+    </template>
+
+    <template #body>
+      <Table
+        class="h-full"
+        :columns="columns"
+        :menu="menu"
+        :data-source="filteredConnections"
+        sort="start"
       />
-      <Input v-model="keywords" clearable size="small" placeholder="Search" class="ml-8 flex-1" />
-      <Button
-        :icon="isPause ? 'play' : 'pause'"
-        size="small"
-        type="text"
-        class="ml-8"
-        @click="togglePause"
-      />
-      <Button
-        v-if="isActive"
-        v-tips="'home.connections.closeAll'"
-        icon="close"
-        size="small"
-        type="text"
-        @click="handleCloseAll"
-      />
-      <Button
-        v-else
-        v-tips="'common.clear'"
-        icon="clear"
-        size="small"
-        type="text"
-        @click="handleClearClosedConns"
-      />
-      <Button icon="settings" size="small" type="text" @click="toggleSettings" />
-    </div>
-    <Table
-      class="flex-1 mt-8"
-      :columns="columns"
-      :menu="menu"
-      :data-source="filteredConnections"
-      sort="start"
-    />
-  </div>
+    </template>
+  </ModalContainer>
 
   <Modal
     v-model:open="showDetails"
@@ -343,7 +354,7 @@ onUnmounted(() => {
     max-width="80"
     mask-closable
   >
-    <CodeViewer v-model="details" />
+    <CodeEditor v-model="details" />
   </Modal>
 
   <Modal

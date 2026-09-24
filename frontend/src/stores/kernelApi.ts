@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   getProxies,
@@ -43,6 +44,7 @@ import {
   getKernelRuntimeArgs,
   getKernelRuntimeEnv,
   eventBus,
+  sleep,
 } from '@/utils'
 
 import type { CoreApiConfig, CoreApiProxy } from '@/types/kernel'
@@ -81,7 +83,7 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
     },
   })
 
-  let runtimeProfile: IProfile | undefined
+  let runtimeProfile: App.Profile | undefined
 
   const proxies = ref<Record<string, CoreApiProxy>>({})
 
@@ -209,7 +211,7 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
       if (!inbound) throw 'home.overview.needTun'
       options = { ...config.value.tun, ...options }
       inbound.enable = options.enable
-      inbound.tun!.stack = options.stack || TunStack.Mixed
+      inbound.tun!.stack = (options.stack || TunStack.Mixed) as App.TunStack
       inbound.tun!.interface_name = options.device || ''
       if (options.interface_name) {
         runtimeProfile.route.default_interface = options.interface_name
@@ -239,6 +241,8 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
     const { proxies: b } = await getProxies()
     proxies.value = b
   }
+
+  const { t } = useI18n()
 
   /* Bridge API */
   const corePid = ref(-1)
@@ -289,8 +293,13 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
     while (!stopped) {
       const ok = await probeApiAvailability().catch(() => false)
       if (ok) break
-      if (stopped) throw 'Startup failed. Check logs for details.'
+      await sleep(500)
     }
+
+    if (stopped) {
+      throw t('kernel.startupFailed')
+    }
+
     return pid
   }
 
@@ -306,6 +315,9 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
 
     if (appSettingsStore.app.autoSetSystemProxy) {
       await envStore.setSystemProxy().catch((err) => message.error(err))
+    }
+    if (appSettingsStore.app.autoSetSystemDNS) {
+      await envStore.setSystemDNS(true).catch((err) => message.error(err))
     }
     await envStore.updateSystemProxyStatus()
 
@@ -327,6 +339,9 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
     if (envStore.systemProxy) {
       await envStore.clearSystemProxy()
     }
+    if (appSettingsStore.app.autoSetSystemDNS || envStore.systemDNSSet) {
+      await envStore.setSystemDNS(false).catch((err) => message.error(err))
+    }
 
     resetConfig()
 
@@ -335,7 +350,7 @@ export const useKernelApiStore = defineStore('kernelApi', () => {
     coreStoppedResolver(null)
   }
 
-  const startCore = async (_profile?: IProfile) => {
+  const startCore = async (_profile?: App.Profile) => {
     if (running.value) throw 'The core is already running'
 
     logsStore.clearKernelLog()

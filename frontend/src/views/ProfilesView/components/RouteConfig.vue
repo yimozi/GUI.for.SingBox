@@ -13,7 +13,7 @@ interface Props {
 
 defineProps<Props>()
 
-const model = defineModel<IProfile['route']>({ required: true })
+const model = defineModel<App.Profile['route']>({ required: true })
 
 const activeKey = ref('common')
 const rulesConfigRef = useTemplateRef('rulesConfigRef')
@@ -56,6 +56,10 @@ defineExpose({ handleAdd })
       <div class="form-item">
         {{ t('kernel.route.default_domain_resolver.server') }}
         <Select v-model="model.default_domain_resolver.server" :options="serverOptions" clearable />
+      </div>
+      <div class="form-item">
+        {{ t('kernel.route.default_http_client') }}
+        <Select v-model="model.default_http_client" :options="outboundOptions" clearable />
       </div>
       <!-- <div class="form-item">
         {{ t('kernel.route.default_domain_resolver.client_subnet') }}

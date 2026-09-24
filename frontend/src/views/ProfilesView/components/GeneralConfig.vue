@@ -11,7 +11,7 @@ interface Props {
 
 defineProps<Props>()
 
-const model = defineModel<{ log: IProfile['log']; experimental: IProfile['experimental'] }>({
+const model = defineModel<{ log: App.Profile['log']; experimental: App.Profile['experimental'] }>({
   required: true,
 })
 
@@ -113,8 +113,8 @@ const [showMore, toggleMore] = useBool(false)
           <Switch v-model="model.experimental.cache_file.store_fakeip" />
         </div>
         <div class="form-item">
-          {{ t('kernel.cache_file.store_rdrc') }}
-          <Switch v-model="model.experimental.cache_file.store_rdrc" />
+          {{ t('kernel.cache_file.store_dns') }}
+          <Switch v-model="model.experimental.cache_file.store_dns" />
         </div>
       </template>
     </div>

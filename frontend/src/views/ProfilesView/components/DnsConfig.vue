@@ -10,12 +10,12 @@ import DnsServersConfig from './DnsServersConfig.vue'
 interface Props {
   inboundOptions: { label: string; value: string }[]
   outboundOptions: { label: string; value: string }[]
-  ruleSet: IRuleSet[]
+  ruleSet: App.ProfileRuleSet[]
 }
 
 defineProps<Props>()
 
-const model = defineModel<IDNS>({ required: true })
+const model = defineModel<App.Dns>({ required: true })
 
 const serversOptions = computed(() =>
   model.value.servers.map((v) => ({ label: v.tag, value: v.id })),
@@ -41,6 +41,23 @@ const handleAdd = () => {
   handlerMap[activeKey.value]?.()
 }
 
+const onDisableCacheChange = (v: boolean) => {
+  if (v) {
+    model.value.optimistic.enabled = false
+  }
+}
+const onDisableExpireChange = (v: boolean) => {
+  if (v) {
+    model.value.optimistic.enabled = false
+  }
+}
+const onOptimisticEnabledChange = (v: boolean) => {
+  if (v) {
+    model.value.disable_cache = false
+    model.value.disable_expire = false
+  }
+}
+
 defineExpose({ handleAdd })
 </script>
 
@@ -49,15 +66,19 @@ defineExpose({ handleAdd })
     <template #common>
       <div class="form-item">
         {{ t('kernel.dns.disable_cache') }}
-        <Switch v-model="model.disable_cache" />
+        <Switch v-model="model.disable_cache" @change="onDisableCacheChange" />
       </div>
       <div class="form-item">
         {{ t('kernel.dns.disable_expire') }}
-        <Switch v-model="model.disable_expire" />
+        <Switch v-model="model.disable_expire" @change="onDisableExpireChange" />
       </div>
       <div class="form-item">
-        {{ t('kernel.dns.independent_cache') }}
-        <Switch v-model="model.independent_cache" />
+        {{ t('kernel.dns.optimistic.name') }}
+        <Switch v-model="model.optimistic.enabled" @change="onOptimisticEnabledChange" />
+      </div>
+      <div v-if="model.optimistic.enabled" class="form-item">
+        {{ t('kernel.dns.optimistic.timeout') }}
+        <Input v-model="model.optimistic.timeout" editable />
       </div>
       <div class="form-item">
         {{ t('kernel.dns.final') }}

@@ -1,16 +1,14 @@
 <script lang="ts" setup>
 import { computed, h, isVNode, ref, resolveComponent, watch } from 'vue'
 
-import type { CustomAction, CustomActionFn, CustomActionApi } from '@/types/app'
-
 interface Props {
-  actions: (CustomAction | CustomActionFn)[]
+  actions: (App.CustomAction | App.CustomActionFn)[]
 }
 
 const props = defineProps<Props>()
 
-const resolvedActionMap = ref(new Map<string, CustomAction>())
-const api: CustomActionApi = {
+const resolvedActionMap = ref(new Map<string, App.CustomAction>())
+const api: App.CustomActionApi = {
   h: (type: any, ...args: any[]) => h(resolveComponent(type), ...args),
   ref,
 }
@@ -19,7 +17,7 @@ const computedActions = computed(() => Array.from(resolvedActionMap.value.values
 
 const resolveDynamicField = <T>(field: T): T => (typeof field === 'function' ? field(api) : field)
 
-const renderCustomActionSlot = (slot: CustomAction['componentSlots']) => {
+const renderCustomActionSlot = (slot: App.CustomAction['componentSlots']) => {
   const resolved = resolveDynamicField(slot ?? {})
   return isVNode(resolved) ? resolved : h('div', resolved)
 }
@@ -27,7 +25,7 @@ const renderCustomActionSlot = (slot: CustomAction['componentSlots']) => {
 watch(
   () => props.actions,
   (actions) => {
-    const newMap = new Map<string, CustomAction>()
+    const newMap = new Map<string, App.CustomAction>()
     for (const action of actions) {
       const id = action.id!
       if (resolvedActionMap.value.has(id)) {
@@ -42,19 +40,21 @@ watch(
 )
 </script>
 <template>
-  <component
-    :is="action.component"
-    v-for="action in computedActions"
-    :key="action.id"
-    v-memo="action.id"
-    v-bind="resolveDynamicField(action.componentProps)"
-  >
-    <template
-      v-for="[name, slot] in Object.entries(resolveDynamicField(action.componentSlots ?? {}))"
-      :key="name"
-      #[name]
+  <div class="flex items-center gap-8 mx-8 overflow-hidden">
+    <component
+      :is="action.component"
+      v-for="action in computedActions"
+      :key="action.id"
+      v-memo="action.id"
+      v-bind="resolveDynamicField(action.componentProps)"
     >
-      <component :is="renderCustomActionSlot(slot)" />
-    </template>
-  </component>
+      <template
+        v-for="[name, slot] in Object.entries(resolveDynamicField(action.componentSlots ?? {}))"
+        :key="name"
+        #[name]
+      >
+        <component :is="renderCustomActionSlot(slot)" />
+      </template>
+    </component>
+  </div>
 </template>

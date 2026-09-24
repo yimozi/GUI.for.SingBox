@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { h, resolveComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import logo from '@/assets/logo'
-import { RestartApp, BrowserOpenURL, ExitApp } from '@/bridge'
+import { BrowserOpenURL, ExitApp, RestartApp } from '@/bridge'
 import { OS } from '@/enums/app'
 import { useAppStore, useEnvStore } from '@/stores'
 import {
@@ -34,14 +35,53 @@ const handleRestartApp = async () => {
   }
 }
 
-appStore.checkForUpdates()
+if (Date.now() - appStore.lastCheckTime > 60_000) {
+  appStore.checkForUpdates()
+}
+
+defineExpose({
+  modalSlots: {
+    toolbar: () => [
+      h(
+        resolveComponent('Button'),
+        {
+          type: 'link',
+          icon: 'github',
+          size: 'small',
+          onClick: () => BrowserOpenURL(PROJECT_URL),
+        },
+        () => 'GitHub',
+      ),
+      h(
+        resolveComponent('Button'),
+        {
+          type: 'link',
+          icon: 'telegram',
+          size: 'small',
+          onClick: () => BrowserOpenURL(TG_GROUP),
+        },
+        () => 'TG Group',
+      ),
+      h(
+        resolveComponent('Button'),
+        {
+          type: 'link',
+          icon: 'telegram',
+          size: 'small',
+          onClick: () => BrowserOpenURL(TG_CHANNEL),
+        },
+        () => 'TG Channel',
+      ),
+    ],
+  },
+})
 </script>
 
 <template>
-  <div class="flex flex-col items-center pt-36">
-    <img :src="logo" class="w-128" draggable="false" />
+  <div class="flex flex-col items-center py-12">
+    <img :src="logo" class="w-64" draggable="false" />
     <div class="py-8 font-bold">{{ APP_TITLE }}</div>
-    <div class="flex items-center pb-8 my-4">
+    <div class="flex items-center">
       <Button
         v-if="appStore.restartable"
         icon="restartApp"
@@ -54,7 +94,7 @@ appStore.checkForUpdates()
       <template v-else>
         <Button
           :loading="appStore.checkForUpdatesLoading"
-          type="link"
+          type="text"
           size="small"
           @click="appStore.checkForUpdates(true)"
         >
@@ -69,24 +109,6 @@ appStore.checkForUpdates()
           {{ t('about.new') }}: {{ appStore.remoteVersion }}
         </Button>
       </template>
-    </div>
-    <div
-      class="text-12 underline flex items-center cursor-pointer"
-      @click="BrowserOpenURL(PROJECT_URL)"
-    >
-      <Icon icon="github" />GitHub
-    </div>
-    <div
-      class="text-12 underline flex items-center cursor-pointer"
-      @click="BrowserOpenURL(TG_GROUP)"
-    >
-      <Icon icon="telegram" />Telegram Group
-    </div>
-    <div
-      class="text-12 underline flex items-center cursor-pointer"
-      @click="BrowserOpenURL(TG_CHANNEL)"
-    >
-      <Icon icon="telegram" />Telegram Channel
     </div>
   </div>
 </template>

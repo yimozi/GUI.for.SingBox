@@ -20,7 +20,11 @@ import {
 } from '@/stores'
 import { deepAssign, deepClone, APP_TITLE, createTextMatcher } from '@/utils'
 
-const _generateRule = (rule: IRule | IDNSRule, rule_set: IRuleSet[], inbounds: IInbound[]) => {
+const _generateRule = (
+  rule: App.Rule | App.DnsRule,
+  rule_set: App.ProfileRuleSet[],
+  inbounds: App.Inbound[],
+) => {
   const getInbound = (id: string) => inbounds.find((v) => v.id === id)?.tag
   const getRuleset = (id: string) => rule_set.find((v) => v.id === id)?.tag
 
@@ -31,8 +35,12 @@ const _generateRule = (rule: IRule | IDNSRule, rule_set: IRuleSet[], inbounds: I
     extra[rule.type] = rule.payload.split(',').map((id) => getRuleset(id))
   } else if (rule.type === RuleType.Inbound) {
     extra[rule.type] = getInbound(rule.payload)
-  } else if ([RuleType.IpIsPrivate, RuleType.IpAcceptAny].includes(rule.type as any)) {
+  } else if (
+    [RuleType.IpIsPrivate, RuleType.IpAcceptAny, RuleType.QueryDnssec].includes(rule.type as any)
+  ) {
     extra[rule.type] = rule.payload === 'true'
+  } else if (rule.type === RuleType.IpVersion) {
+    extra[rule.type] = Number(rule.payload)
   } else if (rule.type === RuleType.ClashMode) {
     extra[rule.type] = rule.payload
   } else {
@@ -40,6 +48,9 @@ const _generateRule = (rule: IRule | IDNSRule, rule_set: IRuleSet[], inbounds: I
       .split(',')
       .map((val) => {
         if ([RuleType.Port, RuleType.SourcePort].includes(rule.type as any)) {
+          return Number(val)
+        }
+        if (rule.type === RuleType.QueryType && /^\d+$/.test(val.trim())) {
           return Number(val)
         }
         return val
@@ -51,24 +62,45 @@ const _generateRule = (rule: IRule | IDNSRule, rule_set: IRuleSet[], inbounds: I
   return extra
 }
 
-const generateExperimental = (experimental: IExperimental, outbounds: IOutbound[]) => {
+const generateExperimental = (experimental: App.Experimental, outbounds: App.Outbound[]) => {
   const getOutbound = (id: string) => outbounds.find((v) => v.id === id)?.tag
   return {
     clash_api: {
       ...experimental.clash_api,
       external_ui_download_detour: getOutbound(experimental.clash_api.external_ui_download_detour),
     },
-    cache_file: {
-      ...experimental.cache_file,
-      store_rdrc: undefined,
-    },
+    cache_file: experimental.cache_file,
   }
 }
 
-const generateInbounds = (inbounds: IInbound[]) => {
+const generateHttpClients = (route: App.Route, outbounds: App.Outbound[]) => {
+  const getOutbound = (id: string) => outbounds.find((v) => v.id === id)?.tag
+  const defaultHttpClient = getOutbound(route.default_http_client)
+  const detours = Array.from(
+    new Set(
+      [
+        defaultHttpClient,
+        ...route.rule_set.map((ruleset) => getOutbound(ruleset.http_client)),
+      ].filter((tag): tag is string => !!tag),
+    ),
+  )
+
+  const httpClients: { tag: string; detour?: string }[] = detours.map((detour) => ({
+    tag: detour,
+    detour,
+  }))
+  if (!defaultHttpClient) {
+    let defaultTag = 'default'
+    while (detours.includes(defaultTag)) defaultTag = `_${defaultTag}`
+    httpClients.unshift({ tag: defaultTag })
+  }
+  return httpClients
+}
+
+const generateInbounds = (inbounds: App.Inbound[]) => {
   return inbounds.flatMap((inbound) => {
     if (!inbound.enable) return []
-    if (inbound.type !== Inbound.Tun) {
+    if (inbound.type !== Inbound.Tun && inbound.type !== Inbound.Direct) {
       const users = inbound[inbound.type]!.users.map((user) => ({
         username: user.split(':')[0],
         password: user.split(':')[1],
@@ -78,6 +110,14 @@ const generateInbounds = (inbounds: IInbound[]) => {
         tag: inbound.tag,
         ...inbound[inbound.type]!.listen,
         users: users.length > 0 ? users : undefined,
+      }
+    }
+    if (inbound.type === Inbound.Direct) {
+      return {
+        type: inbound.type,
+        tag: inbound.tag,
+        ...inbound[inbound.type]!.listen,
+        network: inbound.direct!.network || undefined,
       }
     }
     if (inbound.type === Inbound.Tun) {
@@ -94,7 +134,7 @@ const generateInbounds = (inbounds: IInbound[]) => {
   })
 }
 
-const generateOutbounds = async (outbounds: IOutbound[]) => {
+const generateOutbounds = async (outbounds: App.Outbound[]) => {
   const result: Recordable[] = []
   const SubscriptionCache: Recordable<any[]> = {}
   const proxiesSet = new Set<any>()
@@ -156,7 +196,12 @@ const generateOutbounds = async (outbounds: IOutbound[]) => {
   return result
 }
 
-const generateRoute = (route: IRoute, inbounds: IInbound[], outbounds: IOutbound[], dns: IDNS) => {
+const generateRoute = (
+  route: App.Route,
+  inbounds: App.Inbound[],
+  outbounds: App.Outbound[],
+  dns: App.Dns,
+) => {
   const getOutbound = (id: string) => outbounds.find((v) => v.id === id)?.tag
   const getDnsServer = (id: string) => dns.servers.find((v) => v.id === id)?.tag
   const isInboundEnabled = (id: string) => inbounds.find((v) => v.id === id)?.enable
@@ -209,7 +254,7 @@ const generateRoute = (route: IRoute, inbounds: IInbound[], outbounds: IOutbound
       } else if (ruleset.type === RulesetType.Remote) {
         extra.url = ruleset.url
         extra.format = ruleset.format
-        extra.download_detour = getOutbound(ruleset.download_detour)
+        extra.http_client = getOutbound(ruleset.http_client)
         if (ruleset.update_interval) {
           extra.update_interval = ruleset.update_interval
         }
@@ -223,6 +268,7 @@ const generateRoute = (route: IRoute, inbounds: IInbound[], outbounds: IOutbound
     auto_detect_interface: route.auto_detect_interface,
     find_process: route.find_process ? true : undefined,
     final: getOutbound(route.final),
+    default_http_client: getOutbound(route.default_http_client),
     default_domain_resolver: {
       server: getDnsServer(route.default_domain_resolver.server),
     },
@@ -231,13 +277,14 @@ const generateRoute = (route: IRoute, inbounds: IInbound[], outbounds: IOutbound
 }
 
 const generateDns = (
-  dns: IDNS,
-  rule_set: IRuleSet[],
-  inbounds: IInbound[],
-  outbounds: IOutbound[],
+  dns: App.Dns,
+  rule_set: App.ProfileRuleSet[],
+  inbounds: App.Inbound[],
+  outbounds: App.Outbound[],
 ) => {
   const getOutbound = (id: string) => outbounds.find((v) => v.id === id)
   const getDnsServer = (id: string) => dns.servers.find((v) => v.id === id)?.tag
+  const getRuleTag = (id: string) => dns.rules.find((v) => v.id === id)?.tag
   const extra: Recordable = {}
   if (dns.strategy !== Strategy.Default) {
     extra.strategy = dns.strategy
@@ -313,33 +360,42 @@ const generateDns = (
         }
         delete extra.__is_fake_ip
       }
-      if ([RuleAction.Route, RuleAction.RouteOptions].includes(rule.action as any)) {
+      const isRoute = rule.action === RuleAction.Route
+      const isEvaluate = rule.action === RuleAction.Evaluate
+      const isRouteOptions = rule.action === RuleAction.RouteOptions
+      const isPredefined = rule.action === RuleAction.Predefined
+      const isReject = rule.action === RuleAction.Reject
+      if (isRoute || isEvaluate) {
+        extra.server = getDnsServer(rule.server)
+      }
+      if (isEvaluate) {
+        extra.tag = rule.tag
+      }
+      if (isRoute || isEvaluate || isRouteOptions) {
         rule.disable_cache && (extra.disable_cache = rule.disable_cache)
         rule.client_subnet && (extra.client_subnet = rule.client_subnet)
-        if (rule.action === RuleAction.Route) {
-          extra.server = getDnsServer(rule.server)
-          if (rule.strategy !== Strategy.Default) {
-            // extra.strategy = rule.strategy
-          }
-        }
       }
-      if ([RuleAction.RouteOptions, RuleAction.Predefined].includes(rule.action as any)) {
+      if (isRouteOptions || isPredefined) {
         deepAssign(extra, JSON.parse(rule.server))
       }
-      if (rule.action === RuleAction.Reject) {
+      if (isReject) {
         extra.method = rule.server
+      }
+      if (rule.match_response) {
+        extra.match_response =
+          rule.match_response === '__true' ? true : getRuleTag(rule.match_response)
       }
       return extra
     }),
     disable_cache: dns.disable_cache,
     disable_expire: dns.disable_expire,
-    independent_cache: dns.independent_cache,
+    optimistic: dns.optimistic,
     final: getDnsServer(dns.final),
     ...extra,
   }
 }
 
-export const generateDnsServerURL = (dnsServer: IDNSServer) => {
+export const generateDnsServerURL = (dnsServer: App.DnsServerConfig) => {
   const { type, server_port, path, server, interface: _interface } = dnsServer
   let address = ''
   if (type == DnsServer.Https) {
@@ -373,7 +429,7 @@ type GenerateConfigOptions = {
 }
 
 export const generateConfig = async (
-  originalProfile: IProfile,
+  originalProfile: App.Profile,
   options: GenerateConfigOptions = {},
 ) => {
   if (typeof options === 'boolean') {
@@ -394,6 +450,7 @@ export const generateConfig = async (
   let config: Recordable = {
     log: profile.log,
     experimental: generateExperimental(profile.experimental, profile.outbounds),
+    http_clients: generateHttpClients(profile.route, profile.outbounds),
     inbounds: generateInbounds(profile.inbounds),
     outbounds: await generateOutbounds(profile.outbounds),
     route: generateRoute(profile.route, profile.inbounds, profile.outbounds, profile.dns),
@@ -403,6 +460,12 @@ export const generateConfig = async (
   // adapt to stable branch
   if (enableStableConfigCompat) {
     _adaptToStableBranch(config)
+  } else {
+    config.inbounds?.forEach((v: Recordable) => {
+      if (v.type === Inbound.Tun) {
+        delete v.stack
+      }
+    })
   }
 
   // step 2
@@ -442,7 +505,7 @@ export const generateConfig = async (
 }
 
 export const generateConfigFile = async (
-  profile: IProfile,
+  profile: App.Profile,
   beforeWrite: (config: any) => Promise<any>,
 ) => {
   const header = `DO NOT EDIT - Generated by ${APP_TITLE}`

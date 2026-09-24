@@ -3,12 +3,11 @@ export const IS_IN_MODAL = 'IS_IN_MODAL'
 </script>
 
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, markRaw, onUnmounted, provide, ref, watch } from 'vue'
 
 import { useBool } from '@/hooks'
-import useI18n from '@/lang'
 import { useAppStore } from '@/stores'
-import { message } from '@/utils'
+import { message, sampleID } from '@/utils'
 
 export interface Props {
   title?: string
@@ -19,12 +18,17 @@ export interface Props {
   minHeight?: string
   width?: string
   height?: string
+  px?: number
+  py?: number
   cancel?: boolean
   submit?: boolean
   cancelText?: string
   submitText?: string
   maskClosable?: boolean
   class?: string
+  container?: string
+  sideTab?: boolean
+  destroyOnClose?: boolean
   toolbar?: {
     maximize?: boolean
     minimize?: boolean
@@ -34,6 +38,7 @@ export interface Props {
   onCancel?: () => MaybePromise<boolean | void>
   beforeClose?: (isOk: boolean) => MaybePromise<boolean | void>
   afterClose?: (isOk: boolean) => void
+  afterDestroy?: () => void
 }
 
 export interface Slots {
@@ -56,12 +61,17 @@ const props = withDefaults(defineProps<Props>(), {
   minHeight: '',
   width: '',
   height: '',
+  px: 16,
+  py: 16,
   cancel: true,
   submit: true,
   cancelText: 'common.cancel',
   submitText: 'common.save',
   maskClosable: false,
   class: undefined,
+  container: 'body',
+  sideTab: undefined,
+  destroyOnClose: true,
   toolbar: () => ({
     maximize: true,
     minimize: true,
@@ -70,21 +80,25 @@ const props = withDefaults(defineProps<Props>(), {
   onCancel: undefined,
   beforeClose: undefined,
   afterClose: undefined,
+  afterDestroy: undefined,
 })
 
 const open = defineModel<boolean>('open', { default: false })
 
+const hasOpened = ref(open.value)
 const cancelLoading = ref(false)
 const submitLoading = ref(false)
 
 const modalZindex = ref()
 const appStore = useAppStore()
 const [isMaximize, toggleMaximize] = useBool(false)
-// const [isMinimize, toggleMinimize] = useBool(false)
+const isMinimize = ref(false)
 
-const { t } = useI18n.global
+let resolveAfterLeave: () => void
+let afterLeavePromise: Promise<void>
 
-const handleAction = async (isOk: boolean) => {
+const handleAction = async (isOk: boolean, waitForAnimation = true) => {
+  if (cancelLoading.value || submitLoading.value) return
   const loading = isOk ? submitLoading : cancelLoading
   const action = isOk ? props.onOk : props.onCancel
 
@@ -97,8 +111,24 @@ const handleAction = async (isOk: boolean) => {
     loading.value = false
   }
 
+  waitForAnimation = waitForAnimation && visible.value && !isSide.value
   open.value = false
+
+  if (waitForAnimation) {
+    afterLeavePromise = new Promise((r) => (resolveAfterLeave = r))
+    await afterLeavePromise
+  }
+
   props.afterClose?.(isOk)
+
+  if (props.destroyOnClose) {
+    props.afterDestroy?.()
+    removeMinimizedModal()
+  }
+}
+
+const onAfterLeave = () => {
+  resolveAfterLeave?.()
 }
 
 const handleSubmit = () => handleAction(true)
@@ -106,20 +136,36 @@ const handleCancel = () => handleAction(false)
 
 const onMaskClick = () => props.maskClosable && handleCancel()
 
-const contentStyle = computed(() => ({
-  maxHeight: props.maxHeight + '%',
-  maxWidth: props.maxWidth + '%',
-  minWidth: isMaximize.value ? '100%' : props.minWidth ? props.minWidth + '%' : '0',
-  minHeight: isMaximize.value ? '100%' : props.minHeight ? props.minHeight + '%' : '0',
-  width: props.width + '%',
-  height: props.height + '%',
-}))
+const contentStyle = computed(() =>
+  isSide.value
+    ? {
+        width: '100%',
+        height: '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        minWidth: '0',
+        minHeight: '0',
+      }
+    : {
+        maxHeight: props.maxHeight + '%',
+        maxWidth: props.maxWidth + '%',
+        minWidth: isMaximize.value ? '100%' : props.minWidth ? props.minWidth + '%' : '0',
+        minHeight: isMaximize.value ? '100%' : props.minHeight ? props.minHeight + '%' : '0',
+        width: props.width + '%',
+        height: props.height + '%',
+      },
+)
+
+const shouldRender = computed(() => open.value || isMinimize.value || hasOpened.value)
 
 let lastEscTime = 0
 let closeMessage: () => void
 
 const closeFn = () => {
-  if (isMaximize.value) {
+  if (isMinimize.value) {
+    return
+  }
+  if (isMaximize.value && !isSide.value) {
     toggleMaximize()
     return
   }
@@ -139,11 +185,93 @@ const closeFn = () => {
   }
 }
 
+const minimizeModal = markRaw({
+  id: sampleID(),
+  title: () => props.title,
+  openFn: () => {
+    modalZindex.value = ++appStore.modalZIndexCounter
+    open.value = true
+    removeMinimizedModal()
+  },
+  minimizeFn: () => {
+    handleMinimize()
+  },
+  closeFn: () => {
+    handleAction(false, false)
+  },
+})
+
+const removeMinimizedModal = () => {
+  const idx = appStore.modalMinimized.findIndex((m) => m === minimizeModal)
+  if (idx !== -1) {
+    appStore.modalMinimized.splice(idx, 1)
+  }
+}
+
+const handleMinimize = () => {
+  const m = appStore.modalMinimized.includes(minimizeModal)
+  if (!m) {
+    appStore.modalMinimized.push(minimizeModal)
+  }
+  open.value = false
+  isMinimize.value = true
+}
+
+const tabId = sampleID()
+const tabEligible = computed(() => props.sideTab ?? props.toolbar.maximize !== false)
+const isSide = computed(() => tabEligible.value && appStore.modalSplitActive)
+const visible = computed(
+  () => open.value && !isMinimize.value && (!isSide.value || appStore.activeModalTab === tabId),
+)
+const tab = markRaw({
+  id: tabId,
+  title: () => props.title || 'common.modalList',
+  activate: () => {
+    appStore.activeModalTab = tabId
+    modalZindex.value = ++appStore.modalZIndexCounter
+    const idx = appStore.modalStack.indexOf(closeFn)
+    if (idx !== -1) appStore.modalStack.splice(idx, 1)
+    appStore.modalStack.push(closeFn)
+  },
+  close: handleCancel,
+})
+
+watch(
+  () => open.value && tabEligible.value,
+  (shown) => {
+    const idx = appStore.modalTabs.findIndex((item) => item.id === tabId)
+    if (shown && idx === -1) {
+      appStore.modalTabs.push(tab)
+      tab.activate()
+    } else if (!shown && idx !== -1) {
+      appStore.modalTabs.splice(idx, 1)
+      if (appStore.activeModalTab === tabId) {
+        appStore.modalTabs[Math.min(idx, appStore.modalTabs.length - 1)]?.activate()
+      }
+    }
+  },
+  { immediate: true, flush: 'post' },
+)
+
+onUnmounted(() => {
+  const idx = appStore.modalTabs.findIndex((item) => item.id === tabId)
+  if (idx !== -1) appStore.modalTabs.splice(idx, 1)
+  if (appStore.activeModalTab === tabId) appStore.modalTabs.at(-1)?.activate()
+  const stackIndex = appStore.modalStack.indexOf(closeFn)
+  if (stackIndex !== -1) appStore.modalStack.splice(stackIndex, 1)
+  removeMinimizedModal()
+})
+
 watch(open, (v) => {
   if (v) {
+    hasOpened.value = true
+    isMinimize.value = false
     modalZindex.value = ++appStore.modalZIndexCounter
     appStore.modalStack.push(closeFn)
   } else {
+    if (!props.destroyOnClose) {
+      handleMinimize()
+    }
     closeMessage?.()
     const idx = appStore.modalStack.findIndex((fn) => fn === closeFn)
     if (idx !== -1) {
@@ -155,13 +283,21 @@ watch(open, (v) => {
 provide('cancel', handleCancel)
 provide('submit', handleSubmit)
 provide(IS_IN_MODAL, true)
+
+defineExpose({ handleCancel })
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="modal" :duration="200">
+  <Teleport :to="isSide ? '#app-modal-content' : container">
+    <Transition
+      :name="tabEligible && appStore.modalSideBySide ? 'modal-tab' : 'modal'"
+      :duration="200"
+      @after-leave="onAfterLeave"
+    >
       <div
-        v-if="open"
+        v-if="shouldRender"
+        v-show="visible"
+        :class="{ 'is-side': isSide }"
         :style="{ zIndex: modalZindex }"
         class="gui-modal-mask fixed inset-0 flex items-center justify-center backdrop-blur-sm"
         style="--wails-draggable: drag"
@@ -175,17 +311,28 @@ provide(IS_IN_MODAL, true)
         >
           <div
             v-if="title || slots.title || slots.toolbar"
-            class="flex items-center p-16"
+            class="gui-modal-header flex items-center p-16"
             style="--wails-draggable: drag"
-            @dblclick.self="toggleMaximize"
+            @dblclick.self="!isSide && toggleMaximize()"
           >
             <slot name="title">
-              <div v-if="title" class="font-bold">{{ t(title) }}</div>
+              <div v-if="title" class="font-bold">{{ $t(title) }}</div>
             </slot>
             <div class="ml-auto" style="--wails-draggable: false">
               <slot name="toolbar"></slot>
-              <!-- <Button v-if="toolbar.minimize" @click="toggleMinimize" icon="minimize" type="text" /> -->
-              <Button v-if="toolbar.maximize" type="text" @click="toggleMaximize">
+              <Button
+                v-if="tabEligible"
+                type="text"
+                icon="maximize2"
+                @click="appStore.modalSideBySide = !appStore.modalSideBySide"
+              />
+              <Button
+                v-if="toolbar.minimize"
+                icon="minimize2"
+                type="text"
+                @click="handleMinimize"
+              />
+              <Button v-if="toolbar.maximize && !isSide" type="text" @click="toggleMaximize">
                 <Icon
                   :class="{ maximize: isMaximize }"
                   icon="arrowDown"
@@ -194,10 +341,13 @@ provide(IS_IN_MODAL, true)
               </Button>
             </div>
           </div>
-          <div class="flex-1 overflow-auto mx-16">
+          <ScrollView :pt="props.py" :pr="props.px" :pb="props.py" :pl="props.px">
             <slot></slot>
-          </div>
-          <div v-if="footer" class="flex items-center justify-end py-8 px-16 gap-8">
+          </ScrollView>
+          <div
+            v-if="footer"
+            class="gui-modal-footer flex items-center justify-end py-8 px-16 gap-8"
+          >
             <slot name="action"></slot>
             <slot name="cancel">
               <Button
@@ -206,12 +356,12 @@ provide(IS_IN_MODAL, true)
                 :type="maskClosable ? 'text' : 'normal'"
                 @click="handleCancel"
               >
-                {{ t(cancelText) }}
+                {{ $t(cancelText) }}
               </Button>
             </slot>
             <slot name="submit">
               <Button v-if="submit" :loading="submitLoading" type="primary" @click="handleSubmit">
-                {{ t(submitText) }}
+                {{ $t(submitText) }}
               </Button>
             </slot>
           </div>
@@ -222,6 +372,32 @@ provide(IS_IN_MODAL, true)
 </template>
 
 <style lang="less" scoped>
+.gui-modal-mask.is-side {
+  position: absolute;
+  background: transparent;
+  backdrop-filter: none;
+
+  .gui-modal-modal {
+    box-shadow: none;
+  }
+}
+
+.modal-tab-enter-active .gui-modal-modal > * {
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.modal-tab-enter-from .gui-modal-modal > * {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.modal-tab-leave-active {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .modal-enter-active .gui-modal-modal,
 .modal-leave-active .gui-modal-modal {
   transition:
@@ -240,6 +416,14 @@ provide(IS_IN_MODAL, true)
 
   .gui-modal-modal {
     background-color: var(--modal-bg);
+  }
+
+  .gui-modal-header {
+    border-bottom: 1px solid var(--divider-color);
+  }
+
+  .gui-modal-footer {
+    border-top: 1px solid var(--divider-color);
   }
 }
 .maximize-normal {
